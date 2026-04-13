@@ -30,6 +30,9 @@ One task step per one agent call.
 - Never use `git add .` or `git add -A`.
 - Show changed files and ask user what to commit.
 - Ask commit message before commit.
+- Always create a new task branch before coding.
+- Always use Pull Request flow and merge to `main` via PR.
+- Never push directly to `main`.
 
 ## Planning Protocol
 Before non-trivial implementation:
