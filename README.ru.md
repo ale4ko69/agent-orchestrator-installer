@@ -77,20 +77,24 @@ Get-Help .\scripts\install.ps1 -Detailed
 
 ## Установка по URL репозитория (рекомендуемый bootstrap)
 
-Если запускаете из ИИ-терминала, клонируйте installer и запустите bootstrap:
+Основной режим (без локального git-клона installer-репозитория):
+- скачивается входной bootstrap-скрипт
+- архив installer скачивается в `<project>/.tmp/agent-installer`
+- установка запускается из распакованной копии
+- отдельный локальный git-репозиторий installer не создаётся
 
 ### Windows
 ```powershell
-git clone https://github.com/ale4ko69/agent-orchestrator-installer.git
-cd agent-orchestrator-installer\scripts
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1
+$tmp = Join-Path $env:TEMP "bootstrap-remote.ps1"
+Invoke-WebRequest https://raw.githubusercontent.com/ale4ko69/agent-orchestrator-installer/main/scripts/bootstrap-remote.ps1 -OutFile $tmp
+pwsh -NoProfile -ExecutionPolicy Bypass -File $tmp
 ```
 
 ### Linux/macOS/WSL
 ```bash
-git clone https://github.com/ale4ko69/agent-orchestrator-installer.git
-cd agent-orchestrator-installer/scripts
-bash ./bootstrap.sh
+tmp="/tmp/bootstrap-remote.sh"
+curl -fsSL https://raw.githubusercontent.com/ale4ko69/agent-orchestrator-installer/main/scripts/bootstrap-remote.sh -o "$tmp"
+bash "$tmp"
 ```
 
 Поведение bootstrap:
@@ -100,8 +104,11 @@ bash ./bootstrap.sh
 4. Генерирует bootstrap-конфиг и запускает установщик.
 
 Можно явно передать путь проекта:
-- Windows: `.\bootstrap.ps1 -ProjectPath "D:\path\to\project"`
-- Linux/macOS/WSL: `bash ./bootstrap.sh /path/to/project`
+- Windows: `pwsh -File $tmp -ProjectPath "D:\path\to\project"`
+- Linux/macOS/WSL: `bash "$tmp" /path/to/project`
+
+Опционально (классический локальный режим):
+- можно клонировать installer-репозиторий и запускать `scripts/bootstrap.ps1` / `scripts/bootstrap.sh`
 
 ## Запуск
 ### Windows
