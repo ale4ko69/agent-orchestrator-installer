@@ -76,6 +76,34 @@ python3 scripts/install.py --help
 Get-Help .\scripts\install.ps1 -Detailed
 ```
 
+## Install From GitHub URL (Recommended Bootstrap)
+
+If you start from an AI terminal, clone the installer and run bootstrap:
+
+### Windows
+```powershell
+git clone https://github.com/ale4ko69/agent-orchestrator-installer.git
+cd agent-orchestrator-installer\scripts
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1
+```
+
+### Linux/macOS/WSL
+```bash
+git clone https://github.com/ale4ko69/agent-orchestrator-installer.git
+cd agent-orchestrator-installer/scripts
+bash ./bootstrap.sh
+```
+
+Bootstrap behavior:
+1. Checks whether current folder looks like a project root.
+2. Asks user to confirm using current folder.
+3. If user declines (or folder is not a project), asks for project path.
+4. Generates bootstrap config and runs the installer.
+
+You can also pass project path explicitly:
+- Windows: `.\bootstrap.ps1 -ProjectPath "D:\path\to\project"`
+- Linux/macOS/WSL: `bash ./bootstrap.sh /path/to/project`
+
 ## Usage
 ### Windows
 ```powershell
@@ -127,4 +155,3 @@ Admin rights may be required only if your project is located in a protected OS d
     project-overview.md
     modules/*.md (optional, when sections are large)
 ```
-
