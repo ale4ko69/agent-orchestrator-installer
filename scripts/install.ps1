@@ -392,6 +392,25 @@ function Analyze-Project(
       }
     }
   }
+
+  $summary = @{
+    projectName = $ProjectName
+    projectRoot = ($ProjectRoot -replace '\\','/')
+    analysisProfile = $effectiveProfile
+    codeFilesCount = $codeFilesCount
+    topLevelDirectories = $topDirs.Count
+    manifestsDetected = $manifests
+    moduleItemsCount = @{
+      docs = ($docsMdDirs.Count + $docsMdFiles.Count)
+      ui = $uiItems.Count
+      server = $serverItems.Count
+      services = $serviceItems.Count
+      infra = ($dockerFiles.Count + $ciFiles.Count)
+    }
+    generatedAt = (Get-Date -Format 'yyyy-MM-dd')
+  } | ConvertTo-Json -Depth 5
+
+  Write-ManagedText -Text ($summary + "`n") -Dst (Join-Path $TargetDocs 'analysis-summary.json') -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
 }
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -404,6 +423,14 @@ $projectRoot = [string]$config.projectRoot
 $codexHome = if ($config.codexHome) { [string]$config.codexHome } else { Join-Path $projectRoot ".ai" }
 $mainBranch = if ($config.mainBranch) { [string]$config.mainBranch } else { "main" }
 $taskPrefix = if ($config.taskPrefix) { [string]$config.taskPrefix } else { "TASK" }
+$authProvider = if ($config.authProvider) { [string]$config.authProvider } else { "TBD" }
+$complianceRequirements = if ($config.complianceRequirements) { [string]$config.complianceRequirements } else { "TBD" }
+$a11yLevel = if ($config.a11yLevel) { [string]$config.a11yLevel } else { "WCAG 2.1 AA" }
+$language = if ($config.language) { [string]$config.language } else { "TBD" }
+$framework = if ($config.framework) { [string]$config.framework } else { "TBD" }
+$database = if ($config.database) { [string]$config.database } else { "TBD" }
+$hosting = if ($config.hosting) { [string]$config.hosting } else { "TBD" }
+$sharedTypesPath = if ($config.sharedTypesPath) { [string]$config.sharedTypesPath } else { "src/shared/types" }
 
 if ([string]::IsNullOrWhiteSpace($projectName) -or [string]::IsNullOrWhiteSpace($projectRoot)) {
   throw "projectName and projectRoot are required"
@@ -440,12 +467,34 @@ if (-not $AnalyzeOnly) {
     "MAIN_BRANCH" = $mainBranch
     "TASK_PREFIX" = $taskPrefix
     "DATE" = (Get-Date -Format "yyyy-MM-dd")
+    "AUTH_PROVIDER" = $authProvider
+    "COMPLIANCE_REQUIREMENTS" = $complianceRequirements
+    "A11Y_LEVEL" = $a11yLevel
+    "LANGUAGE" = $language
+    "FRAMEWORK" = $framework
+    "DATABASE" = $database
+    "HOSTING" = $hosting
+    "SHARED_TYPES_PATH" = $sharedTypesPath
   }
 
   $templatePath = Join-Path $repoRoot "templates/copilot-config/copilot-instructions.md"
   $templateRaw = Get-Content -LiteralPath $templatePath -Raw
   $rendered = Apply-Tokens -Text $templateRaw -Tokens $tokens
   Write-ManagedText -Text $rendered -Dst (Join-Path $targetCopilot "copilot-instructions.md") -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
+
+  $constitutionPath = Join-Path $repoRoot "templates/_render/CONSTITUTION.md.tpl"
+  if (Test-Path -LiteralPath $constitutionPath) {
+    $constitutionRaw = Get-Content -LiteralPath $constitutionPath -Raw
+    $constitutionRendered = Apply-Tokens -Text $constitutionRaw -Tokens $tokens
+    Write-ManagedText -Text $constitutionRendered -Dst (Join-Path $targetDocs "rules/CONSTITUTION.md") -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
+  }
+
+  $qualityPath = Join-Path $repoRoot "templates/_render/QUALITY-GATES.md.tpl"
+  if (Test-Path -LiteralPath $qualityPath) {
+    $qualityRaw = Get-Content -LiteralPath $qualityPath -Raw
+    $qualityRendered = Apply-Tokens -Text $qualityRaw -Tokens $tokens
+    Write-ManagedText -Text $qualityRendered -Dst (Join-Path $targetDocs "rules/QUALITY-GATES.md") -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
+  }
 }
 
 if (-not $NoSecondStepPrompt -and -not $AnalyzeProject -and -not $AnalyzeOnly -and -not $DryRun) {

@@ -541,6 +541,27 @@ def run_installation(
     rendered = render_template(template_path.read_text(encoding="utf-8"), tokens)
     write_text_file(rendered, target_copilot / "copilot-instructions.md", dry_run=dry_run, update_only=update_only, stats=stats)
 
+    constitution_tpl = repo_root / "templates" / "_render" / "CONSTITUTION.md.tpl"
+    quality_tpl = repo_root / "templates" / "_render" / "QUALITY-GATES.md.tpl"
+    if constitution_tpl.exists():
+        constitution_rendered = render_template(constitution_tpl.read_text(encoding="utf-8"), tokens)
+        write_text_file(
+            constitution_rendered,
+            target_docs / "rules" / "CONSTITUTION.md",
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
+    if quality_tpl.exists():
+        quality_rendered = render_template(quality_tpl.read_text(encoding="utf-8"), tokens)
+        write_text_file(
+            quality_rendered,
+            target_docs / "rules" / "QUALITY-GATES.md",
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
+
 
 def run_analysis(
     project_name: str,
@@ -571,6 +592,30 @@ def run_analysis(
         for rel_path, text in module_files.items():
             write_text_file(text, target_docs / rel_path, dry_run=dry_run, update_only=update_only, stats=stats)
 
+    summary = {
+        "projectName": project_name,
+        "projectRoot": project_root.as_posix(),
+        "analysisProfile": effective_profile,
+        "codeFilesCount": data["code_files_count"],
+        "topLevelDirectories": len(data["top_dirs"]),
+        "manifestsDetected": [k for k, v in data["manifests"].items() if v],
+        "moduleItemsCount": {
+            "docs": len(data["docs_md_dirs"]) + len(data["docs_md_files"]),
+            "ui": len(data["ui_paths"]),
+            "server": len(data["server_paths"]),
+            "services": len(data["service_paths"]),
+            "infra": len(data["docker_files"]) + len(data["ci_files"]),
+        },
+        "generatedAt": date.today().isoformat(),
+    }
+    write_text_file(
+        json.dumps(summary, indent=2) + "\n",
+        target_docs / "analysis-summary.json",
+        dry_run=dry_run,
+        update_only=update_only,
+        stats=stats,
+    )
+
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
@@ -585,6 +630,14 @@ def main(argv: list[str]) -> int:
     codex_home_raw = config.get("codexHome", "").strip()
     main_branch = config.get("mainBranch", "main").strip() or "main"
     task_prefix = config.get("taskPrefix", "TASK").strip() or "TASK"
+    auth_provider = config.get("authProvider", "TBD").strip() or "TBD"
+    compliance_requirements = config.get("complianceRequirements", "TBD").strip() or "TBD"
+    a11y_level = config.get("a11yLevel", "WCAG 2.1 AA").strip() or "WCAG 2.1 AA"
+    language = config.get("language", "TBD").strip() or "TBD"
+    framework = config.get("framework", "TBD").strip() or "TBD"
+    database = config.get("database", "TBD").strip() or "TBD"
+    hosting = config.get("hosting", "TBD").strip() or "TBD"
+    shared_types_path = config.get("sharedTypesPath", "src/shared/types").strip() or "src/shared/types"
 
     if not project_name or not project_root_raw:
         raise ValueError("projectName and projectRoot are required")
@@ -611,6 +664,14 @@ def main(argv: list[str]) -> int:
             "MAIN_BRANCH": main_branch,
             "TASK_PREFIX": task_prefix,
             "DATE": date.today().isoformat(),
+            "AUTH_PROVIDER": auth_provider,
+            "COMPLIANCE_REQUIREMENTS": compliance_requirements,
+            "A11Y_LEVEL": a11y_level,
+            "LANGUAGE": language,
+            "FRAMEWORK": framework,
+            "DATABASE": database,
+            "HOSTING": hosting,
+            "SHARED_TYPES_PATH": shared_types_path,
         }
         run_installation(
             repo_root=repo_root,

@@ -3,5 +3,13 @@
   "projectRoot": "D:/path/to/project",
   "codexHome": "D:/path/to/project/.ai",
   "mainBranch": "main",
-  "taskPrefix": "TASK"
+  "taskPrefix": "TASK",
+  "authProvider": "TBD",
+  "complianceRequirements": "TBD",
+  "a11yLevel": "WCAG 2.1 AA",
+  "language": "TBD",
+  "framework": "TBD",
+  "database": "TBD",
+  "hosting": "TBD",
+  "sharedTypesPath": "src/shared/types"
 }
