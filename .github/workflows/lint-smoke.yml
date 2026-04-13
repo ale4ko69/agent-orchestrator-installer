@@ -1,0 +1,85 @@
+name: Lint and Smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Python syntax check
+        run: python -m py_compile scripts/install.py
+
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Smoke install (Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/aoi-smoke/docs
+          cat > /tmp/aoi-smoke/README.md <<'EOF'
+          # Smoke Project
+          EOF
+          cat > /tmp/aoi-smoke/project.config.json <<'EOF'
+          {
+            "projectName": "Smoke Linux",
+            "projectRoot": "/tmp/aoi-smoke",
+            "codexHome": "/tmp/aoi-smoke/.ai",
+            "mainBranch": "main",
+            "taskPrefix": "SMOKE"
+          }
+          EOF
+          bash ./scripts/install.sh /tmp/aoi-smoke/project.config.json --analyze-project --no-second-step-prompt
+          test -f /tmp/aoi-smoke/.ai/shared-docs/project-overview.md
+          test -f /tmp/aoi-smoke/.ai/shared-docs/rules/CONSTITUTION.md
+          test -f /tmp/aoi-smoke/.ai/shared-docs/rules/QUALITY-GATES.md
+
+      - name: Smoke install (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:TEMP "aoi-smoke"
+          if (Test-Path $root) { Remove-Item -LiteralPath $root -Recurse -Force }
+          New-Item -ItemType Directory -Path (Join-Path $root "docs") -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $root "README.md") -Value "# Smoke Project"
+          $json = @"
+          {
+            "projectName": "Smoke Windows",
+            "projectRoot": "$($root -replace '\\','/')",
+            "codexHome": "$($root -replace '\\','/')/.ai",
+            "mainBranch": "main",
+            "taskPrefix": "SMOKE"
+          }
+          "@
+          $cfg = Join-Path $root "project.config.json"
+          Set-Content -LiteralPath $cfg -Encoding UTF8 -Value $json
+          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -ConfigPath $cfg -AnalyzeProject -NoSecondStepPrompt
+          if (-not (Test-Path -LiteralPath (Join-Path $root ".ai/shared-docs/project-overview.md"))) { throw "project-overview.md missing" }
+          if (-not (Test-Path -LiteralPath (Join-Path $root ".ai/shared-docs/rules/CONSTITUTION.md"))) { throw "CONSTITUTION.md missing" }
+          if (-not (Test-Path -LiteralPath (Join-Path $root ".ai/shared-docs/rules/QUALITY-GATES.md"))) { throw "QUALITY-GATES.md missing" }
+

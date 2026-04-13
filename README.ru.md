@@ -2,6 +2,8 @@
 
 Установщик набора субагентов и общих правил оркестрации для любого проекта.
 
+Roadmap: [ROADMAP.md](./ROADMAP.md)
+
 ## Поддерживаемые ОС
 - Windows (PowerShell)
 - Linux
@@ -22,7 +24,10 @@
    - `shared-docs/dev/*`
    - `shared-docs/rules/*`
 5. Рендерит `copilot-config/copilot-instructions.md` с токенами проекта
-6. Сразу спрашивает пользователя про второй шаг:
+6. Рендерит policy-документы:
+   - `shared-docs/rules/CONSTITUTION.md`
+   - `shared-docs/rules/QUALITY-GATES.md`
+7. Сразу спрашивает пользователя про второй шаг:
    - запустить обзорный анализ проекта прямо сейчас
    - при ответе `y/yes` сразу выполняет анализ и генерирует `project-overview.md`
 
@@ -41,7 +46,9 @@
 6. Формирует риски, unknowns и suggested agent profile
 7. Генерирует один главный файл:
    - `shared-docs/project-overview.md`
-8. Если секция слишком большая, выносит детали в:
+8. Генерирует машинно-читаемый summary:
+   - `shared-docs/analysis-summary.json`
+9. Если секция слишком большая, выносит детали в:
    - `shared-docs/modules/docs.md`
    - `shared-docs/modules/ui.md`
    - `shared-docs/modules/server.md`
@@ -64,6 +71,16 @@
 - `-ModuleSplitThreshold / --module-split-threshold`: порог вынесения секции в отдельный модульный файл (default: 12)
 - `-AnalyzeProfile / --analyze-profile`: профиль анализа `auto|node|python|go|java|generic` (default: `auto`)
 - `-NoSecondStepPrompt / --no-second-step-prompt`: не спрашивать про второй шаг после установки
+
+Дополнительные поля в `project.config.json` (опционально):
+- `authProvider`
+- `complianceRequirements`
+- `a11yLevel`
+- `language`
+- `framework`
+- `database`
+- `hosting`
+- `sharedTypesPath`
 
 ## Help по флагам
 - Linux/macOS/WSL:
@@ -109,6 +126,8 @@ bash "$tmp"
 
 Опционально (классический локальный режим):
 - можно клонировать installer-репозиторий и запускать `scripts/bootstrap.ps1` / `scripts/bootstrap.sh`
+
+Интеграции `Gastown/Beads` сейчас отложены и запланированы как будущие opt-in профили (см. roadmap).
 
 ## Запуск
 ### Windows
@@ -158,6 +177,9 @@ bash ./scripts/install.sh ./project.config.json --dry-run --analyze-project
   shared-docs/
     dev/*.md
     rules/*.md
+    rules/CONSTITUTION.md
+    rules/QUALITY-GATES.md
     project-overview.md
+    analysis-summary.json
     modules/*.md (опционально, если секции большие)
 ```

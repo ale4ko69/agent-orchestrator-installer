@@ -1,0 +1,30 @@
+name: Publish Check
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate release prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f README.md
+          test -f README.ru.md
+          test -f ROADMAP.md
+          test -f scripts/bootstrap-remote.sh
+          test -f scripts/bootstrap-remote.ps1
+          test -f scripts/install.py
+          test -f scripts/install.ps1
+          test -f templates/_render/CONSTITUTION.md.tpl
+          test -f templates/_render/QUALITY-GATES.md.tpl
+          echo "Publish check passed."
+

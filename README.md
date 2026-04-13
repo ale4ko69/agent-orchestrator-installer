@@ -4,6 +4,8 @@ Russian version: [README.ru.md](./README.ru.md)
 
 Cross-platform installer for agent orchestration templates and project analysis docs.
 
+Roadmap (planned features and deferred integrations): [ROADMAP.md](./ROADMAP.md)
+
 ## Supported OS
 - Windows (PowerShell)
 - Linux
@@ -24,7 +26,10 @@ The tool supports two stages:
    - `shared-docs/dev/*`
    - `shared-docs/rules/*`
 5. Render `copilot-config/copilot-instructions.md` with project tokens
-6. Prompt for second stage:
+6. Render policy docs:
+   - `shared-docs/rules/CONSTITUTION.md`
+   - `shared-docs/rules/QUALITY-GATES.md`
+7. Prompt for second stage:
    - run project overview analysis now
    - if user answers `y/yes`, analysis runs immediately
 
@@ -43,7 +48,9 @@ When analysis is enabled, the tool:
 6. Produces risks, unknowns, and suggested agent profile
 7. Generates one main file:
    - `shared-docs/project-overview.md`
-8. Splits large sections to:
+8. Generates machine-readable summary:
+   - `shared-docs/analysis-summary.json`
+9. Splits large sections to:
    - `shared-docs/modules/docs.md`
    - `shared-docs/modules/ui.md`
    - `shared-docs/modules/server.md`
@@ -65,6 +72,23 @@ If a project is new and mostly empty:
 - `-ModuleSplitThreshold / --module-split-threshold`: split threshold for module docs (default: `12`)
 - `-AnalyzeProfile / --analyze-profile`: `auto|node|python|go|java|generic` (default: `auto`)
 - `-NoSecondStepPrompt / --no-second-step-prompt`: skip stage-2 prompt after install
+
+## Optional Config Fields
+In addition to required `projectName` and `projectRoot`, you can set:
+- `authProvider`
+- `complianceRequirements`
+- `a11yLevel`
+- `language`
+- `framework`
+- `database`
+- `hosting`
+- `sharedTypesPath`
+
+These values are injected into generated policy docs.
+
+## Integrations Scope
+- `Gastown` and `Beads` integrations are intentionally postponed for now.
+- They are tracked in [ROADMAP.md](./ROADMAP.md) as opt-in future profiles.
 
 ## Help (Commands + Descriptions)
 - Linux/macOS/WSL:
@@ -159,6 +183,9 @@ Admin rights may be required only if your project is located in a protected OS d
   shared-docs/
     dev/*.md
     rules/*.md
+    rules/CONSTITUTION.md
+    rules/QUALITY-GATES.md
     project-overview.md
+    analysis-summary.json
     modules/*.md (optional, when sections are large)
 ```
