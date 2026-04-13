@@ -1,3 +1,48 @@
+<#
+.SYNOPSIS
+Installs agent templates and optionally analyzes a project.
+
+.DESCRIPTION
+Stage 1: install copilot/shared-docs templates into target project.
+Stage 2: optional project analysis with overview docs generation.
+
+.PARAMETER ConfigPath
+Path to JSON config file with projectName/projectRoot and optional fields.
+
+.PARAMETER DryRun
+Preview all planned file operations without writing changes.
+
+.PARAMETER UpdateOnly
+Update only existing files/directories. Skip creating missing paths.
+
+.PARAMETER AnalyzeProject
+Run project analysis and generate shared-docs/project-overview.md.
+
+.PARAMETER AnalyzeOnly
+Run analysis only; skip template installation.
+
+.PARAMETER ModuleSplitThreshold
+If a section exceeds this count, details are written to shared-docs/modules/*.md.
+
+.PARAMETER AnalyzeProfile
+Analysis profile: auto, node, python, go, java, generic.
+
+.PARAMETER NoSecondStepPrompt
+Do not ask interactive stage-2 analysis prompt after install.
+
+.EXAMPLE
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
+
+.EXAMPLE
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject
+
+.EXAMPLE
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeOnly
+
+.EXAMPLE
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -DryRun -AnalyzeProject
+#>
+
 param(
   [Parameter(Mandatory=$false)]
   [string]$ConfigPath = ".\project.config.json",

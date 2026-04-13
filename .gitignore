@@ -2,3 +2,4 @@
 *.log
 *.tmp
 *.bak
+scripts/project.config.bootstrap.json

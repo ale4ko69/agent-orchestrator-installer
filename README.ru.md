@@ -75,6 +75,34 @@ python3 scripts/install.py --help
 Get-Help .\scripts\install.ps1 -Detailed
 ```
 
+## Установка по URL репозитория (рекомендуемый bootstrap)
+
+Если запускаете из ИИ-терминала, клонируйте installer и запустите bootstrap:
+
+### Windows
+```powershell
+git clone https://github.com/ale4ko69/agent-orchestrator-installer.git
+cd agent-orchestrator-installer\scripts
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1
+```
+
+### Linux/macOS/WSL
+```bash
+git clone https://github.com/ale4ko69/agent-orchestrator-installer.git
+cd agent-orchestrator-installer/scripts
+bash ./bootstrap.sh
+```
+
+Поведение bootstrap:
+1. Проверяет, похожа ли текущая папка на корень проекта.
+2. Спрашивает подтверждение использовать текущую папку.
+3. Если пользователь отказался (или папка не проектная), просит путь к проекту.
+4. Генерирует bootstrap-конфиг и запускает установщик.
+
+Можно явно передать путь проекта:
+- Windows: `.\bootstrap.ps1 -ProjectPath "D:\path\to\project"`
+- Linux/macOS/WSL: `bash ./bootstrap.sh /path/to/project`
+
 ## Запуск
 ### Windows
 ```powershell
@@ -126,4 +154,3 @@ bash ./scripts/install.sh ./project.config.json --dry-run --analyze-project
     project-overview.md
     modules/*.md (опционально, если секции большие)
 ```
-
