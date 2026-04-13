@@ -1,0 +1,7 @@
+{
+  "projectName": "My Project",
+  "projectRoot": "D:/path/to/project",
+  "codexHome": "D:/path/to/project/.ai",
+  "mainBranch": "main",
+  "taskPrefix": "TASK"
+}

@@ -1,0 +1,655 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import os
+import shutil
+import sys
+from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
+
+
+EXCLUDED_DIRS = {
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    ".venv",
+    "venv",
+    "target",
+    "out",
+    ".next",
+    ".idea",
+    ".vscode",
+    ".ai",
+}
+
+UI_DIR_HINTS = {"ui", "frontend", "web", "client", "apps", "src"}
+SERVER_DIR_HINTS = {"server", "api", "backend", "src", "app"}
+SERVICE_DIR_HINTS = {"services", "workers", "jobs", "queues", "consumer", "producer", "scheduler"}
+
+
+@dataclass
+class Stats:
+    created_dirs: int = 0
+    updated_files: int = 0
+    created_files: int = 0
+    skipped_files: int = 0
+
+
+def read_config(path: Path) -> dict:
+    if not path.exists():
+        raise FileNotFoundError(f"Config not found: {path}")
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def render_template(text: str, tokens: dict[str, str]) -> str:
+    out = text
+    for k, v in tokens.items():
+        out = out.replace(f"{{{{{k}}}}}", v)
+    return out
+
+
+def ensure_dir(path: Path, dry_run: bool, update_only: bool, stats: Stats) -> bool:
+    if path.exists():
+        return True
+    if update_only:
+        return False
+    if dry_run:
+        print(f"[DRY-RUN] mkdir -p {path}")
+        stats.created_dirs += 1
+        return True
+    path.mkdir(parents=True, exist_ok=True)
+    stats.created_dirs += 1
+    return True
+
+
+def copy_file(src: Path, dst: Path, dry_run: bool, update_only: bool, stats: Stats) -> None:
+    dst_exists = dst.exists()
+
+    if update_only and not dst_exists:
+        print(f"[SKIP:update-only] create file blocked: {dst}")
+        stats.skipped_files += 1
+        return
+
+    if dry_run:
+        op = "update" if dst_exists else "create"
+        print(f"[DRY-RUN] {op} file: {dst}")
+        if dst_exists:
+            stats.updated_files += 1
+        else:
+            stats.created_files += 1
+        return
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+    if dst_exists:
+        stats.updated_files += 1
+    else:
+        stats.created_files += 1
+
+
+def write_text_file(text: str, dst: Path, dry_run: bool, update_only: bool, stats: Stats) -> None:
+    dst_exists = dst.exists()
+
+    if update_only and not dst_exists:
+        print(f"[SKIP:update-only] create file blocked: {dst}")
+        stats.skipped_files += 1
+        return
+
+    if dry_run:
+        op = "update" if dst_exists else "create"
+        print(f"[DRY-RUN] {op} file: {dst}")
+        if dst_exists:
+            stats.updated_files += 1
+        else:
+            stats.created_files += 1
+        return
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(text, encoding="utf-8")
+    if dst_exists:
+        stats.updated_files += 1
+    else:
+        stats.created_files += 1
+
+
+def copy_dir_files(src_dir: Path, dst_dir: Path, dry_run: bool, update_only: bool, stats: Stats) -> None:
+    if not src_dir.exists():
+        raise FileNotFoundError(f"Template directory not found: {src_dir}")
+
+    dir_ready = ensure_dir(dst_dir, dry_run=dry_run, update_only=update_only, stats=stats)
+    if not dir_ready:
+        print(f"[SKIP:update-only] target directory missing: {dst_dir}")
+        return
+
+    for item in sorted(src_dir.iterdir(), key=lambda p: p.name):
+        if item.is_file():
+            copy_file(item, dst_dir / item.name, dry_run=dry_run, update_only=update_only, stats=stats)
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Install/update orchestrator templates and analyze project.")
+    parser.add_argument("config_path", nargs="?", default="./project.config.json", help="Path to JSON config file.")
+    parser.add_argument("--dry-run", action="store_true", help="Print planned changes without writing files.")
+    parser.add_argument(
+        "--update-only",
+        action="store_true",
+        help="Update only existing files. Do not create missing files/directories.",
+    )
+    parser.add_argument("--analyze-project", action="store_true", help="Scan project and generate overview docs.")
+    parser.add_argument("--analyze-only", action="store_true", help="Run analysis only. Skip template installation.")
+    parser.add_argument(
+        "--module-split-threshold",
+        type=int,
+        default=12,
+        help="Split module details to shared-docs/modules when item count exceeds threshold.",
+    )
+    parser.add_argument(
+        "--analyze-profile",
+        choices=["auto", "node", "python", "go", "java", "generic"],
+        default="auto",
+        help="Analysis profile. auto = detect from project manifests.",
+    )
+    parser.add_argument(
+        "--no-second-step-prompt",
+        action="store_true",
+        help="Disable post-install prompt for running project analysis.",
+    )
+    return parser.parse_args(argv)
+
+
+def detect_analysis_profile(data: dict) -> str:
+    manifests = data["manifests"]
+    if manifests["package.json"]:
+        return "node"
+    if manifests["pyproject.toml"] or manifests["requirements.txt"]:
+        return "python"
+    if manifests["go.mod"]:
+        return "go"
+    if manifests["pom.xml"]:
+        return "java"
+    return "generic"
+
+
+def gather_project_data(project_root: Path) -> dict:
+    top_dirs = [
+        p.name
+        for p in sorted(project_root.iterdir(), key=lambda x: x.name.lower())
+        if p.is_dir() and p.name not in EXCLUDED_DIRS
+    ]
+
+    manifests = {
+        "package.json": False,
+        "pyproject.toml": False,
+        "requirements.txt": False,
+        "go.mod": False,
+        "Cargo.toml": False,
+        "pom.xml": False,
+        "Dockerfile": False,
+        "docker-compose.yml": False,
+        "docker-compose.yaml": False,
+        "Makefile": False,
+        "README": False,
+        "CI": False,
+    }
+
+    code_ext = {".js", ".ts", ".tsx", ".jsx", ".py", ".go", ".java", ".kt", ".rs", ".cs", ".php"}
+    code_files_count = 0
+
+    package_files: list[Path] = []
+    docker_files: list[str] = []
+    ci_files: list[str] = []
+    docs_md_files: list[str] = []
+    docs_md_dirs: set[str] = set()
+    service_paths: list[str] = []
+    ui_paths: list[str] = []
+    server_paths: list[str] = []
+
+    for root, dirs, files in os.walk(project_root):
+        dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
+
+        root_path = Path(root)
+        rel_root = root_path.relative_to(project_root)
+        rel_root_str = "." if str(rel_root) == "." else str(rel_root).replace("\\", "/")
+        parts = [] if rel_root_str == "." else rel_root_str.lower().split("/")
+
+        for f in files:
+            file_path = root_path / f
+            rel = file_path.relative_to(project_root).as_posix()
+            lower_name = f.lower()
+
+            if file_path.suffix.lower() in code_ext:
+                code_files_count += 1
+
+            if lower_name == "package.json":
+                manifests["package.json"] = True
+                if len(package_files) < 20:
+                    package_files.append(file_path)
+            elif lower_name == "pyproject.toml":
+                manifests["pyproject.toml"] = True
+            elif lower_name == "requirements.txt":
+                manifests["requirements.txt"] = True
+            elif lower_name == "go.mod":
+                manifests["go.mod"] = True
+            elif lower_name == "cargo.toml":
+                manifests["Cargo.toml"] = True
+            elif lower_name == "pom.xml":
+                manifests["pom.xml"] = True
+            elif lower_name == "dockerfile":
+                manifests["Dockerfile"] = True
+                if len(docker_files) < 20:
+                    docker_files.append(rel)
+            elif lower_name in {"docker-compose.yml", "docker-compose.yaml"}:
+                manifests[lower_name] = True
+                if len(docker_files) < 20:
+                    docker_files.append(rel)
+            elif lower_name == "makefile":
+                manifests["Makefile"] = True
+            elif lower_name.startswith("readme"):
+                manifests["README"] = True
+            elif ".github/workflows" in rel:
+                manifests["CI"] = True
+                if len(ci_files) < 20:
+                    ci_files.append(rel)
+
+            if lower_name.endswith(".md"):
+                if len(docs_md_files) < 80:
+                    docs_md_files.append(rel)
+                parent = str(Path(rel).parent).replace("\\", "/")
+                docs_md_dirs.add("." if parent == "." else parent)
+
+            if any(x in parts for x in SERVICE_DIR_HINTS) and len(service_paths) < 25:
+                service_paths.append(rel)
+            if any(x in parts for x in UI_DIR_HINTS) and len(ui_paths) < 25 and ("component" in rel.lower() or "pages" in rel.lower() or "src/" in rel):
+                ui_paths.append(rel)
+            if any(x in parts for x in SERVER_DIR_HINTS) and len(server_paths) < 25 and (
+                "route" in rel.lower() or "controller" in rel.lower() or "api" in rel.lower() or "server" in rel.lower()
+            ):
+                server_paths.append(rel)
+
+    return {
+        "top_dirs": top_dirs,
+        "manifests": manifests,
+        "code_files_count": code_files_count,
+        "package_files": package_files,
+        "docker_files": docker_files,
+        "ci_files": ci_files,
+        "docs_md_files": sorted(docs_md_files),
+        "docs_md_dirs": sorted(docs_md_dirs),
+        "service_paths": sorted(set(service_paths)),
+        "ui_paths": sorted(set(ui_paths)),
+        "server_paths": sorted(set(server_paths)),
+    }
+
+
+def parse_commands(project_root: Path, package_files: list[Path], profile: str) -> list[str]:
+    commands: list[str] = []
+
+    for p in package_files[:10]:
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            scripts = data.get("scripts", {})
+            rel = p.relative_to(project_root).as_posix()
+            if scripts:
+                keys = [k for k in ["dev", "start", "build", "test", "lint"] if k in scripts]
+                if keys:
+                    commands.append(f"npm ({rel}): " + ", ".join([f"npm run {k}" for k in keys]))
+        except Exception:
+            continue
+
+    if (project_root / "Makefile").exists():
+        commands.append("make: inspect targets in Makefile")
+    if profile == "python" or (project_root / "pyproject.toml").exists() or (project_root / "requirements.txt").exists():
+        commands.append("python: define standard run/test commands")
+    if profile == "go" or (project_root / "go.mod").exists():
+        commands.append("go: go test ./..., go run ./...")
+    if profile == "java" and (project_root / "pom.xml").exists():
+        commands.append("java(maven): mvn test, mvn package")
+    if profile == "node" and not commands:
+        commands.append("node: define npm scripts for dev/build/test")
+
+    return commands
+
+
+def as_bullets(items: list[str], empty_text: str) -> str:
+    if not items:
+        return f"- {empty_text}"
+    return "\n".join([f"- `{x}`" for x in items])
+
+
+def build_module_details(title: str, items: list[str], project_name: str) -> str:
+    return "\n".join(
+        [
+            f"# {title}",
+            "",
+            f"Project: {project_name}",
+            f"Updated: {date.today().isoformat()}",
+            "",
+            "## Findings",
+            as_bullets(items, "No findings yet."),
+            "",
+        ]
+    )
+
+
+def generate_overview(
+    project_name: str,
+    project_root: Path,
+    data: dict,
+    commands: list[str],
+    split_threshold: int,
+    profile: str,
+) -> tuple[str, dict[str, str]]:
+    manifests = [k for k, v in data["manifests"].items() if v]
+    top_dirs = data["top_dirs"][:30]
+
+    ui_items: list[str] = []
+    server_items: list[str] = []
+    service_items: list[str] = []
+    infra_items: list[str] = []
+    docs_items: list[str] = []
+
+    for d in top_dirs:
+        low = d.lower()
+        if low in UI_DIR_HINTS or low in {"dashboard", "frontend", "client"}:
+            ui_items.append(f"directory: {d}")
+        if low in SERVER_DIR_HINTS:
+            server_items.append(f"directory: {d}")
+        if low in SERVICE_DIR_HINTS:
+            service_items.append(f"directory: {d}")
+
+    ui_items.extend(data["ui_paths"][:20])
+    server_items.extend(data["server_paths"][:20])
+    service_items.extend(data["service_paths"][:20])
+    infra_items.extend(data["docker_files"][:20])
+    infra_items.extend(data["ci_files"][:20])
+    docs_items.extend(data["docs_md_dirs"][:50])
+    docs_items.extend(data["docs_md_files"][:50])
+
+    ui_items = sorted(set(ui_items))
+    server_items = sorted(set(server_items))
+    service_items = sorted(set(service_items))
+    infra_items = sorted(set(infra_items))
+    docs_items = sorted(set(docs_items))
+
+    risks: list[str] = []
+    if data["code_files_count"] == 0:
+        risks.append("Project looks new or empty: no code files detected.")
+    if not data["manifests"]["README"]:
+        risks.append("README not found.")
+    if not commands:
+        risks.append("No explicit run/test commands detected.")
+    if not data["manifests"]["CI"]:
+        risks.append("No CI workflow detected in .github/workflows.")
+    if not docs_items:
+        risks.append("No markdown documentation folders/files detected.")
+
+    unknowns: list[str] = []
+    if not ui_items:
+        unknowns.append("UI module not clearly detected.")
+    if not server_items:
+        unknowns.append("Server/API module not clearly detected.")
+    if not service_items:
+        unknowns.append("Service/worker module not clearly detected.")
+    if not docs_items:
+        unknowns.append("Project documentation sources are unclear.")
+
+    module_files: dict[str, str] = {}
+
+    def section_or_link(section_title: str, section_key: str, items: list[str]) -> str:
+        if len(items) > split_threshold:
+            rel_file = f"modules/{section_key}.md"
+            module_files[rel_file] = build_module_details(section_title, items, project_name)
+            return "\n".join(
+                [
+                    f"### {section_title}",
+                    "- Summary:",
+                    f"  - total findings: {len(items)}",
+                    f"  - details: [{rel_file}]({rel_file})",
+                ]
+            )
+        return "\n".join([f"### {section_title}", as_bullets(items, "No findings yet.")])
+
+    bootstrap_notes: list[str] = []
+    if data["code_files_count"] == 0:
+        bootstrap_notes = [
+            "Create base folders (`src/`, `tests/`, `docs/`) for your stack.",
+            "Add root README with run/build/test commands.",
+            "Define minimal CI workflow in `.github/workflows`.",
+            "Run analyzer again after first scaffold commit.",
+        ]
+
+    suggested_profile_lines = [
+        "- Default: Orchestrator + SC-Agent + CR-Agent",
+        "- Add UI-Test-Agent if UI module exists",
+        "- Add VALIDATION-Agent for write APIs and schema-heavy backends",
+    ]
+    if profile == "node":
+        suggested_profile_lines = [
+            "- Orchestrator + SC-Agent + CR-Agent",
+            "- UI-Test-Agent for React/Vue screens",
+            "- VALIDATION-Agent for API payload contracts",
+        ]
+    elif profile == "python":
+        suggested_profile_lines = [
+            "- Orchestrator + SC-Agent + CR-Agent",
+            "- Focus SC-Agent on service modules and tests",
+            "- Add UI-Test-Agent only if separate frontend exists",
+        ]
+    elif profile == "go":
+        suggested_profile_lines = [
+            "- Orchestrator + SC-Agent + CR-Agent",
+            "- Focus SC-Agent on handlers/services and integration tests",
+            "- Add VALIDATION-Agent for request validation layers",
+        ]
+    elif profile == "java":
+        suggested_profile_lines = [
+            "- Orchestrator + SC-Agent + CR-Agent",
+            "- Focus SC-Agent on controllers/services/repositories",
+            "- Add UI-Test-Agent only if UI module is present",
+        ]
+
+    lines = [
+        f"# Project Overview: {project_name}",
+        "",
+        f"Updated: {date.today().isoformat()}",
+        f"Project root: `{project_root.as_posix()}`",
+        "",
+        "## Project Snapshot",
+        f"- Analysis profile: **{profile}**",
+        f"- Code files detected: **{data['code_files_count']}**",
+        f"- Top-level directories: **{len(top_dirs)}**",
+        f"- Manifests detected: {', '.join(manifests) if manifests else 'none'}",
+        "",
+        "## Repository Map",
+        as_bullets(top_dirs, "No top-level directories found."),
+        "",
+        "## Module Breakdown",
+        section_or_link("Docs Intake", "docs", docs_items),
+        "",
+        section_or_link("UI", "ui", ui_items),
+        "",
+        section_or_link("Server/API", "server", server_items),
+        "",
+        section_or_link("Services/Workers", "services", service_items),
+        "",
+        section_or_link("Infra/CI", "infra", infra_items),
+        "",
+        "## Run/Test/Build Commands",
+        as_bullets(commands, "No commands auto-detected. Add them to README and/or package manifests."),
+        "",
+        "## Risks",
+        as_bullets(risks, "No immediate risks detected."),
+        "",
+        "## Unknowns",
+        as_bullets(unknowns, "No major unknowns detected."),
+        "",
+        "## Suggested Agent Profile",
+        *suggested_profile_lines,
+        "",
+    ]
+
+    if bootstrap_notes:
+        lines.extend(["## New Project Bootstrap Notes", as_bullets(bootstrap_notes, "No bootstrap notes."), ""])
+
+    return "\n".join(lines).rstrip() + "\n", module_files
+
+
+def run_installation(
+    repo_root: Path,
+    target_copilot: Path,
+    target_agents: Path,
+    target_docs: Path,
+    tokens: dict[str, str],
+    dry_run: bool,
+    update_only: bool,
+    stats: Stats,
+) -> None:
+    ensure_dir(target_copilot, dry_run=dry_run, update_only=update_only, stats=stats)
+    ensure_dir(target_agents, dry_run=dry_run, update_only=update_only, stats=stats)
+    ensure_dir(target_docs, dry_run=dry_run, update_only=update_only, stats=stats)
+    ensure_dir(target_docs / "dev", dry_run=dry_run, update_only=update_only, stats=stats)
+    ensure_dir(target_docs / "rules", dry_run=dry_run, update_only=update_only, stats=stats)
+
+    copy_dir_files(repo_root / "templates" / "copilot-config" / "agents", target_agents, dry_run=dry_run, update_only=update_only, stats=stats)
+    copy_dir_files(repo_root / "templates" / "shared-docs" / "dev", target_docs / "dev", dry_run=dry_run, update_only=update_only, stats=stats)
+    copy_dir_files(repo_root / "templates" / "shared-docs" / "rules", target_docs / "rules", dry_run=dry_run, update_only=update_only, stats=stats)
+
+    template_path = repo_root / "templates" / "copilot-config" / "copilot-instructions.md"
+    rendered = render_template(template_path.read_text(encoding="utf-8"), tokens)
+    write_text_file(rendered, target_copilot / "copilot-instructions.md", dry_run=dry_run, update_only=update_only, stats=stats)
+
+
+def run_analysis(
+    project_name: str,
+    project_root: Path,
+    target_docs: Path,
+    split_threshold: int,
+    analyze_profile: str,
+    dry_run: bool,
+    update_only: bool,
+    stats: Stats,
+) -> None:
+    data = gather_project_data(project_root)
+    effective_profile = analyze_profile if analyze_profile != "auto" else detect_analysis_profile(data)
+    commands = parse_commands(project_root, data["package_files"], effective_profile)
+    overview, module_files = generate_overview(
+        project_name=project_name,
+        project_root=project_root,
+        data=data,
+        commands=commands,
+        split_threshold=split_threshold,
+        profile=effective_profile,
+    )
+
+    write_text_file(overview, target_docs / "project-overview.md", dry_run=dry_run, update_only=update_only, stats=stats)
+
+    if module_files:
+        ensure_dir(target_docs / "modules", dry_run=dry_run, update_only=update_only, stats=stats)
+        for rel_path, text in module_files.items():
+            write_text_file(text, target_docs / rel_path, dry_run=dry_run, update_only=update_only, stats=stats)
+
+
+def main(argv: list[str]) -> int:
+    args = parse_args(argv)
+    config_path = Path(args.config_path)
+    repo_root = Path(__file__).resolve().parent.parent
+    stats = Stats()
+
+    config = read_config(config_path)
+
+    project_name = config.get("projectName", "").strip()
+    project_root_raw = config.get("projectRoot", "").strip()
+    codex_home_raw = config.get("codexHome", "").strip()
+    main_branch = config.get("mainBranch", "main").strip() or "main"
+    task_prefix = config.get("taskPrefix", "TASK").strip() or "TASK"
+
+    if not project_name or not project_root_raw:
+        raise ValueError("projectName and projectRoot are required")
+
+    project_root = Path(project_root_raw)
+    codex_home = Path(codex_home_raw) if codex_home_raw else project_root / ".ai"
+
+    target_copilot = codex_home / "copilot-config"
+    target_agents = target_copilot / "agents"
+    target_docs = codex_home / "shared-docs"
+
+    print("Mode:")
+    print(f"- dry-run: {args.dry_run}")
+    print(f"- update-only: {args.update_only}")
+    print(f"- analyze-project: {args.analyze_project}")
+    print(f"- analyze-only: {args.analyze_only}")
+    print(f"- analyze-profile: {args.analyze_profile}")
+    print(f"- target codex home: {codex_home}")
+
+    if not args.analyze_only:
+        tokens = {
+            "PROJECT_NAME": project_name,
+            "PROJECT_ROOT": str(project_root).replace("\\", "/"),
+            "MAIN_BRANCH": main_branch,
+            "TASK_PREFIX": task_prefix,
+            "DATE": date.today().isoformat(),
+        }
+        run_installation(
+            repo_root=repo_root,
+            target_copilot=target_copilot,
+            target_agents=target_agents,
+            target_docs=target_docs,
+            tokens=tokens,
+            dry_run=args.dry_run,
+            update_only=args.update_only,
+            stats=stats,
+        )
+
+    should_prompt_second_step = (
+        not args.no_second_step_prompt
+        and not args.analyze_project
+        and not args.analyze_only
+        and not args.dry_run
+    )
+    if should_prompt_second_step:
+        try:
+            answer = input("Run second step now: generate project overview analysis? [y/N]: ").strip().lower()
+        except EOFError:
+            answer = ""
+        if answer in {"y", "yes"}:
+            args.analyze_project = True
+
+    if args.analyze_project:
+        ensure_dir(target_docs, dry_run=args.dry_run, update_only=args.update_only, stats=stats)
+        run_analysis(
+            project_name=project_name,
+            project_root=project_root,
+            target_docs=target_docs,
+            split_threshold=max(1, args.module_split_threshold),
+            analyze_profile=args.analyze_profile,
+            dry_run=args.dry_run,
+            update_only=args.update_only,
+            stats=stats,
+        )
+
+    print("\nDone")
+    print(f"Project: {project_name}")
+    print(f"Codex Home: {codex_home}")
+    print(f"Agents: {target_agents}")
+    print(f"Docs: {target_docs}")
+    print("Summary:")
+    print(f"- dirs created: {stats.created_dirs}")
+    print(f"- files created: {stats.created_files}")
+    print(f"- files updated: {stats.updated_files}")
+    print(f"- files skipped: {stats.skipped_files}")
+
+    if args.dry_run:
+        print("\nNo files were changed (dry-run).")
+
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main(sys.argv[1:]))
+    except Exception as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        raise
