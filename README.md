@@ -1,70 +1,117 @@
 # Agent Orchestrator Installer
 
-Установщик набора субагентов и общих правил оркестрации для любого проекта.
+Russian version: [README.ru.md](./README.ru.md)
 
-## Поддерживаемые ОС
+Cross-platform installer for agent orchestration templates and project analysis docs.
+
+## Supported OS
 - Windows (PowerShell)
 - Linux
 - macOS
 - WSL
 
-## Что это делает
-Скрипт может работать в двух режимах:
-1. Установка инфраструктуры агентов и правил
-2. Анализ проекта и генерация обзорной документации
+## What It Does
+The tool supports two stages:
+1. Install agent/rules infrastructure
+2. Analyze an existing project and generate overview documentation
 
-## Полный флоу установки
-1. Читает `project.config.json`
-2. Проверяет `projectName` и `projectRoot`
-3. Определяет `codexHome` (`<projectRoot>/.ai`, если не задан)
-4. Копирует шаблоны:
+## Installation Flow
+1. Read `project.config.json`
+2. Validate required fields (`projectName`, `projectRoot`)
+3. Resolve `codexHome` (`<projectRoot>/.ai` if not provided)
+4. Copy templates:
    - `copilot-config/agents/*`
    - `shared-docs/dev/*`
    - `shared-docs/rules/*`
-5. Рендерит `copilot-config/copilot-instructions.md` с токенами проекта
-6. **Сразу спрашивает пользователя про второй шаг**:
-   - запустить обзорный анализ проекта прямо сейчас
-   - при ответе `y/yes` сразу выполняет анализ и генерирует `project-overview.md`
+5. Render `copilot-config/copilot-instructions.md` with project tokens
+6. Prompt for second stage:
+   - run project overview analysis now
+   - if user answers `y/yes`, analysis runs immediately
 
-## Полный флоу анализа
-При флаге анализа скрипт:
-1. Сканирует структуру репозитория (с исключениями: `.git`, `node_modules`, `dist`, `build`, `.venv`, и т.д.)
-2. Ищет манифесты/entry points (`package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `Dockerfile`, `docker-compose*`, `Makefile`, CI workflows)
-3. Ищет папки и файлы `.md` по всему проекту как источники существующей документации
-4. Выделяет модульные зоны:
+## Analysis Flow
+When analysis is enabled, the tool:
+1. Scans repository structure (excluding `.git`, `node_modules`, `dist`, `build`, `.venv`, etc.)
+2. Detects manifests/entry points (`package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `Dockerfile`, `docker-compose*`, `Makefile`, CI workflows)
+3. Detects all directories containing `.md` files (existing docs intake)
+4. Builds module sections:
    - Docs Intake
    - UI
    - Server/API
    - Services/Workers
    - Infra/CI
-5. Пытается извлечь команды запуска/сборки/тестов
-6. Формирует риски, unknowns и suggested agent profile
-7. Генерирует **один главный файл**:
+5. Extracts likely run/build/test commands
+6. Produces risks, unknowns, and suggested agent profile
+7. Generates one main file:
    - `shared-docs/project-overview.md`
-7. Если секция слишком большая, выносит детали в:
+8. Splits large sections to:
+   - `shared-docs/modules/docs.md`
    - `shared-docs/modules/ui.md`
    - `shared-docs/modules/server.md`
    - `shared-docs/modules/services.md`
    - `shared-docs/modules/infra.md`
-   и оставляет ссылки в главном файле
 
-## Новый проект (пустой репозиторий)
-Если проект новый и кода почти нет:
-- `project-overview.md` всё равно создаётся
-- добавляется блок `New Project Bootstrap Notes`
-- unknowns и риски помечаются явно
-- после первого scaffold-коммита можно перезапустить анализ
+## New/Empty Project Behavior
+If a project is new and mostly empty:
+- `project-overview.md` is still generated
+- `New Project Bootstrap Notes` is added
+- unknowns/risks are marked explicitly
+- rerun analysis after first scaffold commit
 
-## Режимы и флаги
-- `-DryRun / --dry-run`: показать изменения без записи файлов
-- `-UpdateOnly / --update-only`: обновлять только существующие файлы
-- `-AnalyzeProject / --analyze-project`: запустить анализ и генерацию обзора
-- `-AnalyzeOnly / --analyze-only`: только анализ, без установки шаблонов
-- `-ModuleSplitThreshold / --module-split-threshold`: порог вынесения секции в отдельный модульный файл (default: 12)
-- `-AnalyzeProfile / --analyze-profile`: профиль анализа `auto|node|python|go|java|generic` (default: `auto`)
-- `-NoSecondStepPrompt / --no-second-step-prompt`: не спрашивать про второй шаг после установки
+## Flags
+- `-DryRun / --dry-run`: preview changes without writing files
+- `-UpdateOnly / --update-only`: update existing files only
+- `-AnalyzeProject / --analyze-project`: run analysis + generate overview
+- `-AnalyzeOnly / --analyze-only`: analysis only, skip template installation
+- `-ModuleSplitThreshold / --module-split-threshold`: split threshold for module docs (default: `12`)
+- `-AnalyzeProfile / --analyze-profile`: `auto|node|python|go|java|generic` (default: `auto`)
+- `-NoSecondStepPrompt / --no-second-step-prompt`: skip stage-2 prompt after install
 
-## Запуск
+## Help (Commands + Descriptions)
+- Linux/macOS/WSL:
+```bash
+python3 scripts/install.py --help
+```
+- Windows PowerShell:
+```powershell
+Get-Help .\scripts\install.ps1 -Detailed
+```
+
+## Install From GitHub URL (Recommended Bootstrap)
+
+Primary mode (no local installer git repo on your machine):
+- download bootstrap entry script
+- installer archive is downloaded to `<project>/.tmp/agent-installer`
+- scripts run from that extracted copy
+- no installer git clone is created in your workspace
+
+### Windows
+```powershell
+$tmp = Join-Path $env:TEMP "bootstrap-remote.ps1"
+Invoke-WebRequest https://raw.githubusercontent.com/ale4ko69/agent-orchestrator-installer/main/scripts/bootstrap-remote.ps1 -OutFile $tmp
+pwsh -NoProfile -ExecutionPolicy Bypass -File $tmp
+```
+
+### Linux/macOS/WSL
+```bash
+tmp="/tmp/bootstrap-remote.sh"
+curl -fsSL https://raw.githubusercontent.com/ale4ko69/agent-orchestrator-installer/main/scripts/bootstrap-remote.sh -o "$tmp"
+bash "$tmp"
+```
+
+Bootstrap behavior:
+1. Checks whether current folder looks like a project root.
+2. Asks user to confirm using current folder.
+3. If user declines (or folder is not a project), asks for project path.
+4. Generates bootstrap config and runs the installer.
+
+You can also pass project path explicitly:
+- Windows: `pwsh -File $tmp -ProjectPath "D:\path\to\project"`
+- Linux/macOS/WSL: `bash "$tmp" /path/to/project`
+
+Optional (classic local mode, if you do want local clone of installer repo):
+- clone this repo and run `scripts/bootstrap.ps1` or `scripts/bootstrap.sh`
+
+## Usage
 ### Windows
 ```powershell
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
@@ -75,12 +122,12 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -An
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -DryRun -AnalyzeProject
 ```
 
-PowerShell может быть ограничен Execution Policy. Без админ-прав используйте:
+PowerShell may be restricted by execution policy. Without admin rights:
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -ConfigPath .\project.config.json -AnalyzeProject
 ```
 
-Или вообще без PowerShell (через `cmd` + Python):
+No-PowerShell fallback (`cmd` + Python):
 ```bat
 .\scripts\install.cmd .\project.config.json --analyze-project
 ```
@@ -95,15 +142,15 @@ bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-prof
 bash ./scripts/install.sh ./project.config.json --dry-run --analyze-project
 ```
 
-## Нужны ли права администратора?
-Обычно **не нужны**. Скрипты:
-- читают файлы проекта
-- создают/обновляют файлы только внутри целевого `projectRoot/.ai` (или `codexHome`)
-- не ставят системные пакеты и не пишут в системные директории
+## Do I Need Admin Rights?
+Usually no. The scripts:
+- read project files
+- create/update files only inside `projectRoot/.ai` (or `codexHome`)
+- do not install system packages or write system paths
 
-Админ-доступ может понадобиться только если сам проект лежит в защищённой папке ОС.
+Admin rights may be required only if your project is located in a protected OS directory.
 
-## Что создаётся в целевом проекте
+## Generated Structure
 ```text
 <project>/.ai/
   copilot-config/
@@ -113,5 +160,5 @@ bash ./scripts/install.sh ./project.config.json --dry-run --analyze-project
     dev/*.md
     rules/*.md
     project-overview.md
-    modules/*.md (опционально, если секции большие)
+    modules/*.md (optional, when sections are large)
 ```
