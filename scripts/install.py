@@ -130,7 +130,27 @@ def copy_dir_files(src_dir: Path, dst_dir: Path, dry_run: bool, update_only: boo
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Install/update orchestrator templates and analyze project.")
+    parser = argparse.ArgumentParser(
+        description="Install/update orchestrator templates and optionally analyze a project.",
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog=(
+            "Commands and examples:\n"
+            "  Install only:\n"
+            "    python scripts/install.py ./project.config.json\n"
+            "\n"
+            "  Install + analyze (step 2):\n"
+            "    python scripts/install.py ./project.config.json --analyze-project\n"
+            "\n"
+            "  Analyze only (no template install):\n"
+            "    python scripts/install.py ./project.config.json --analyze-project --analyze-only\n"
+            "\n"
+            "  Dry run:\n"
+            "    python scripts/install.py ./project.config.json --dry-run --analyze-project\n"
+            "\n"
+            "  Force profile:\n"
+            "    python scripts/install.py ./project.config.json --analyze-project --analyze-profile node\n"
+        ),
+    )
     parser.add_argument("config_path", nargs="?", default="./project.config.json", help="Path to JSON config file.")
     parser.add_argument("--dry-run", action="store_true", help="Print planned changes without writing files.")
     parser.add_argument(
