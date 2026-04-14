@@ -17,6 +17,18 @@ The tool supports two stages:
 1. Install agent/rules infrastructure
 2. Analyze an existing project and generate overview documentation
 
+## Orchestrator Start (Copy/Paste)
+Use this as a single starter command in your AI agent chat after installer setup:
+
+```text
+Work strictly as Orchestrator for this project. Read .ai/shared-docs/project-overview.md and all project *.md docs first. Delegate all implementation to subagents asynchronously (run_in_background=true), remain available in chat, provide short progress updates, and report each subagent result immediately. Never code directly as orchestrator. Follow git policy: always task branch -> PR -> merge to main, never direct push to main.
+```
+
+Recommended launch context:
+- Open AI agent terminal in the target project root.
+- Ensure `project-overview.md` exists (run stage-2 analysis if missing).
+- Keep orchestrator mode strict: planning/delegation/verification only.
+
 ## Included Agent Packs (Current)
 - Core engineering orchestration:
   - Orchestrator, SC, UI-UX, UI-Test, CR, DOMAIN, VALIDATION, DOC
