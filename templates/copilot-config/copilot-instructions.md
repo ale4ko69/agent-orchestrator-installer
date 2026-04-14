@@ -30,14 +30,34 @@ Task Prefix: {{TASK_PREFIX}}
 
 ## Delegation Mandate (Strict)
 - Code changes -> SC-Agent
+- Frontend UI/UX components and styles -> UI-UX-Agent
 - Code review -> CR-Agent
 - Domain/page analysis -> DOMAIN-Agent
 - Validation schemas -> VALIDATION-Agent
 - UI/browser verification -> UI-Test-Agent
 - Documentation audit -> DOC-Agent
 
+## Frontend Delivery Protocol (Mandatory)
+- For frontend tasks, delegate in sequence:
+  1. UI-UX-Agent for UX structure + UI changes
+  2. UI-Test-Agent for browser validation
+  3. CR-Agent for review on risky/large changes
+- Do not accept frontend completion without explicit checks for:
+  1. responsive behavior
+  2. keyboard/focus flow
+  3. contrast/readability
+  4. empty/loading/error states
+
 ## Verification Cycle
 Delegate -> Verify output -> Accept or re-delegate with concrete corrections.
+
+## Dev-QA Retry Policy
+- For implementation tasks, run Dev -> QA loop with explicit PASS/FAIL.
+- Max retries per task: 3.
+- If attempt 3 still fails, stop auto-retries and escalate to user with options:
+  1. reassign to different subagent
+  2. split into smaller tasks
+  3. defer task
 
 ## Atomicity
 One task step per one agent call.
