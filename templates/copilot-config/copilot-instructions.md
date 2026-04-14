@@ -86,6 +86,12 @@ Task Prefix: {{TASK_PREFIX}}
 ## Verification Cycle
 Delegate -> Verify output -> Accept or re-delegate with concrete corrections.
 
+## Non-Blocking Orchestrator Behavior (Mandatory)
+- Delegation must be asynchronous/background when platform supports it (example: `run_in_background: true`).
+- Orchestrator must remain responsive to user messages while subagents are running.
+- While waiting, send concise progress updates instead of blocking.
+- On subagent completion, immediately report outcome and next action.
+
 ## Dev-QA Retry Policy
 - For implementation tasks, run Dev -> QA loop with explicit PASS/FAIL.
 - Max retries per task: 3.
