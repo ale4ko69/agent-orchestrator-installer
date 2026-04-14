@@ -15,6 +15,21 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
 1. Установка инфраструктуры агентов и правил
 2. Анализ проекта и генерация обзорной документации
 
+## Какие наборы агентов входят сейчас
+- Core-оркестрация разработки:
+  - Orchestrator, SC, UI-UX, UI-Test, CR, DOMAIN, VALIDATION, DOC
+- Продуктовый контур (опциональный этап):
+  - Product-Manager, Sprint-Prioritizer, Feedback-Synthesizer
+- Growth + Marketing:
+  - Growth-Hacker, Content-Creator, SEO, Social-Media
+  - AI-Citation, Agentic-Search-Optimizer
+  - App-Store, Video-Optimization, LinkedIn, Twitter/X, Reddit
+- Paid media:
+  - Tracking-Measurement, PPC, Paid-Social, Ad-Creative
+  - Paid-Media-Auditor, Search-Query-Analyst, Programmatic-Display-Buyer
+- Мультиязычная локализация:
+  - Language-Translator-Agent (`EN/RU/HEB`)
+
 ## Полный флоу установки
 1. Читает `project.config.json`
 2. Проверяет `projectName` и `projectRoot`

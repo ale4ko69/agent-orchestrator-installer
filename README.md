@@ -17,6 +17,21 @@ The tool supports two stages:
 1. Install agent/rules infrastructure
 2. Analyze an existing project and generate overview documentation
 
+## Included Agent Packs (Current)
+- Core engineering orchestration:
+  - Orchestrator, SC, UI-UX, UI-Test, CR, DOMAIN, VALIDATION, DOC
+- Product planning (optional stage):
+  - Product-Manager, Sprint-Prioritizer, Feedback-Synthesizer
+- Growth + Marketing:
+  - Growth-Hacker, Content-Creator, SEO, Social-Media
+  - AI-Citation, Agentic-Search-Optimizer
+  - App-Store, Video-Optimization, LinkedIn, Twitter/X, Reddit
+- Paid media:
+  - Tracking-Measurement, PPC, Paid-Social, Ad-Creative
+  - Paid-Media-Auditor, Search-Query-Analyst, Programmatic-Display-Buyer
+- Multilingual localization:
+  - Language-Translator-Agent (`EN/RU/HEB`)
+
 ## Installation Flow
 1. Read `project.config.json`
 2. Validate required fields (`projectName`, `projectRoot`)
