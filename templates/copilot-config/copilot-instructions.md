@@ -29,15 +29,70 @@ Task Prefix: {{TASK_PREFIX}}
   - docs state aligned with emptiness
 
 ## Delegation Mandate (Strict)
+- Product framing/scope/goals -> Product-Manager-Agent
+- Sprint planning and task ordering -> Sprint-Prioritizer-Agent
+- Feedback analysis for next iteration -> Feedback-Synthesizer-Agent
+- Growth experiments -> Growth-Hacker-Agent
+- Content planning/copy -> Content-Creator-Agent
+- SEO execution strategy -> SEO-Specialist-Agent
+- Social strategy -> Social-Media-Strategist-Agent
+- AI citation/AEO/GEO -> AI-Citation-Strategist-Agent
+- Agentic task-completion optimization -> Agentic-Search-Optimizer-Agent
+- App listing optimization -> App-Store-Optimizer-Agent
+- Video channel optimization -> Video-Optimization-Specialist-Agent
+- LinkedIn content -> LinkedIn-Content-Creator-Agent
+- X/Twitter engagement strategy -> Twitter-Engager-Agent
+- Reddit community strategy -> Reddit-Community-Builder-Agent
+- Tracking/attribution -> Tracking-Measurement-Specialist-Agent
+- Paid search campaigns -> PPC-Campaign-Strategist-Agent
+- Paid social campaigns -> Paid-Social-Strategist-Agent
+- Ad creative testing -> Ad-Creative-Strategist-Agent
+- Paid account audits -> Paid-Media-Auditor-Agent
+- Search query mining -> Search-Query-Analyst-Agent
+- Programmatic/display buying -> Programmatic-Display-Buyer-Agent
+- Multilingual translation (EN/RU/HEB) -> Language-Translator-Agent
 - Code changes -> SC-Agent
+- Frontend UI/UX components and styles -> UI-UX-Agent
 - Code review -> CR-Agent
 - Domain/page analysis -> DOMAIN-Agent
 - Validation schemas -> VALIDATION-Agent
 - UI/browser verification -> UI-Test-Agent
 - Documentation audit -> DOC-Agent
 
+## Product Planning Protocol (Optional Stage)
+- For non-trivial initiatives, run before implementation:
+  1. Product-Manager-Agent: problem, goals, non-goals, scope guardrails
+  2. Sprint-Prioritizer-Agent: atomic prioritized tasks with dependencies
+- For small bugfixes or single-file technical tasks, this stage may be skipped.
+
+## Growth Planning Protocol (Optional Stage)
+- For go-to-market, acquisition, or distribution tasks:
+  1. Start with Tracking-Measurement-Specialist-Agent to verify data integrity.
+  2. Use Growth-Hacker-Agent + channel specialists for strategy and experiments.
+  3. Route paid acquisition work through PPC/Paid-Social/Creative/Auditor agents.
+- Skip this stage for purely internal engineering tasks.
+
+## Frontend Delivery Protocol (Mandatory)
+- For frontend tasks, delegate in sequence:
+  1. UI-UX-Agent for UX structure + UI changes
+  2. UI-Test-Agent for browser validation
+  3. CR-Agent for review on risky/large changes
+- Do not accept frontend completion without explicit checks for:
+  1. responsive behavior
+  2. keyboard/focus flow
+  3. contrast/readability
+  4. empty/loading/error states
+
 ## Verification Cycle
 Delegate -> Verify output -> Accept or re-delegate with concrete corrections.
+
+## Dev-QA Retry Policy
+- For implementation tasks, run Dev -> QA loop with explicit PASS/FAIL.
+- Max retries per task: 3.
+- If attempt 3 still fails, stop auto-retries and escalate to user with options:
+  1. reassign to different subagent
+  2. split into smaller tasks
+  3. defer task
 
 ## Atomicity
 One task step per one agent call.
