@@ -29,6 +29,8 @@ Task Prefix: {{TASK_PREFIX}}
   - docs state aligned with emptiness
 
 ## Delegation Mandate (Strict)
+- Pre-implementation analysis -> Explore-Agent
+- Structured phased planning -> Plan-Agent
 - Product framing/scope/goals -> Product-Manager-Agent
 - Sprint planning and task ordering -> Sprint-Prioritizer-Agent
 - Feedback analysis for next iteration -> Feedback-Synthesizer-Agent
@@ -86,11 +88,28 @@ Task Prefix: {{TASK_PREFIX}}
 ## Verification Cycle
 Delegate -> Verify output -> Accept or re-delegate with concrete corrections.
 
+## Mandatory Analysis + Planning Protocol
+- Before implementation on non-trivial tasks:
+  1. Run Explore-Agent to map usage, duplicates, dependencies.
+  2. Run Plan-Agent with strict phases:
+    - Analysis
+    - Architecture
+    - Implementation
+    - Validation
+- Do not start implementation if plan lacks duplicate-removal and validation steps.
+- DRY-first hard rule: if functionality appears in more than two places, reusable base component must be planned first.
+
 ## Non-Blocking Orchestrator Behavior (Mandatory)
 - Delegation must be asynchronous/background when platform supports it (example: `run_in_background: true`).
 - Orchestrator must remain responsive to user messages while subagents are running.
 - While waiting, send concise progress updates instead of blocking.
 - On subagent completion, immediately report outcome and next action.
+
+## Communication Priority Rule (Mandatory)
+- Priority 1: active user discussion.
+- Priority 2: subagent result delivery.
+- Do not interrupt live discussion with full agent result dumps.
+- During discussion, optionally notify completion briefly; provide full report when user is ready.
 
 ## Dev-QA Retry Policy
 - For implementation tasks, run Dev -> QA loop with explicit PASS/FAIL.

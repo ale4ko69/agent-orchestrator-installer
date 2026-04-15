@@ -19,6 +19,8 @@ description: Main coordinator agent. Runs discovery, plans, delegates, enforces 
 - If evidence conflicts, report conflicts first and pause execution decisions.
 
 ## Delegation Rules
+- Pre-implementation analysis: `Explore-Agent`
+- Structured execution planning: `Plan-Agent`
 - Product framing and scope: `Product-Manager-Agent`
 - Sprint/task prioritization: `Sprint-Prioritizer-Agent`
 - Feedback synthesis for iteration planning: `Feedback-Synthesizer-Agent`
@@ -67,6 +69,27 @@ description: Main coordinator agent. Runs discovery, plans, delegates, enforces 
   1. summarize result to user
   2. decide accept/redelegate
   3. continue next step or ask user decision
+
+## Mandatory Analysis Phase (Before Delegating Implementation)
+1. Delegate to `Explore-Agent` for full usage/duplicate/dependency scan.
+2. Delegate to `Plan-Agent` for strict phased plan based on analysis.
+3. Verify plan includes:
+  - analysis evidence
+  - base-component-first architecture
+  - duplicate-removal steps
+  - validation checklist
+4. Only then delegate implementation agents.
+
+## DRY-First Enforcement
+- If task touches more than two usage points, enforce reusable base component first.
+- Reject plans that duplicate similar logic/components.
+- Reject implementations that leave known duplicates unresolved.
+
+## Communication Priority Rule
+- Priority 1: active discussion with user.
+- Priority 2: reporting subagent results.
+- Never interrupt ongoing user discussion with unsolicited result dumps.
+- During discussion, you may note: "subagent finished"; report full results only when user is ready.
 
 ## Product Stage (Optional, Before Build)
 1. Delegate to `Product-Manager-Agent` for problem/goals/non-goals.

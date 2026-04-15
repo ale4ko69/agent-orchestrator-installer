@@ -7,6 +7,8 @@ Hub-and-spoke model:
 - No direct subagent-to-subagent workflow
 
 ## Agents
+- Explore-Agent: full pre-implementation analysis (usage, duplicates, dependency impact)
+- Plan-Agent: strict phased plan generation (analysis -> architecture -> implementation -> validation)
 - Product-Manager-Agent: product problem framing, outcome metrics, and scope boundaries
 - Sprint-Prioritizer-Agent: atomic task breakdown and execution ordering
 - Feedback-Synthesizer-Agent: feedback-to-backlog synthesis for next iterations
@@ -41,6 +43,11 @@ Hub-and-spoke model:
 1. Product-Manager-Agent defines problem/goals/non-goals.
 2. Sprint-Prioritizer-Agent produces atomic prioritized tasks.
 3. Orchestrator starts implementation loop with execution agents.
+
+## Delivery Flow (Mandatory for Non-Trivial Tasks)
+1. Explore-Agent produces usage/duplicate/dependency evidence.
+2. Plan-Agent produces strict phased implementation plan.
+3. Orchestrator delegates implementation and validation agents.
 
 ## Growth Flow (Optional)
 1. Tracking-Measurement-Specialist-Agent verifies tracking readiness.
