@@ -27,6 +27,8 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
 - Убедись, что есть `project-overview.md` (если нет, запусти stage-2 анализ).
 - Режим оркестратора должен быть строгим: только планирование/делегирование/верификация.
 
+Пресеты режимов запуска (готовые варианты команд): [ORCHESTRATOR-MODES.md](./templates/shared-docs/ORCHESTRATOR-MODES.md)
+
 ## Какие наборы агентов входят сейчас
 - Core-оркестрация разработки:
   - Orchestrator, SC, UI-UX, UI-Test, CR, DOMAIN, VALIDATION, DOC
@@ -98,6 +100,7 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
 - `-ModuleSplitThreshold / --module-split-threshold`: порог вынесения секции в отдельный модульный файл (default: 12)
 - `-AnalyzeProfile / --analyze-profile`: профиль анализа `auto|node|python|go|java|generic` (default: `auto`)
 - `-NoSecondStepPrompt / --no-second-step-prompt`: не спрашивать про второй шаг после установки
+- `-EnablePack / --enable-pack`: подключить optional pack'и через запятую (сейчас: `session-state`)
 
 Дополнительные поля в `project.config.json` (опционально):
 - `authProvider`
@@ -108,6 +111,7 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
 - `database`
 - `hosting`
 - `sharedTypesPath`
+- `enabledPacks` (массив или строка через запятую, пример: `["session-state"]`)
 
 ## Help по флагам
 - Linux/macOS/WSL:
@@ -161,6 +165,7 @@ bash "$tmp"
 ```powershell
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeOnly
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -ModuleSplitThreshold 8
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeProfile node
@@ -181,6 +186,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -ConfigPath 
 ```bash
 bash ./scripts/install.sh ./project.config.json
 bash ./scripts/install.sh ./project.config.json --analyze-project
+bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state
 bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-only
 bash ./scripts/install.sh ./project.config.json --analyze-project --module-split-threshold 8
 bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-profile python
@@ -206,6 +212,8 @@ bash ./scripts/install.sh ./project.config.json --dry-run --analyze-project
     rules/*.md
     rules/CONSTITUTION.md
     rules/QUALITY-GATES.md
+    ORCHESTRATOR-MODES.md
+    QUICK-COMMANDS.md (при включенном pack `session-state`)
     project-overview.md
     analysis-summary.json
     modules/*.md (опционально, если секции большие)

@@ -11,5 +11,6 @@
   "framework": "TBD",
   "database": "TBD",
   "hosting": "TBD",
-  "sharedTypesPath": "src/shared/types"
+  "sharedTypesPath": "src/shared/types",
+  "enabledPacks": ["session-state"]
 }

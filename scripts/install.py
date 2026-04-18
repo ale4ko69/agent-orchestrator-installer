@@ -24,6 +24,8 @@ EXCLUDED_DIRS = {
     ".ai",
 }
 
+AVAILABLE_PACKS = {"session-state"}
+
 UI_DIR_HINTS = {"ui", "frontend", "web", "client", "apps", "src"}
 SERVER_DIR_HINTS = {"server", "api", "backend", "src", "app"}
 SERVICE_DIR_HINTS = {"services", "workers", "jobs", "queues", "consumer", "producer", "scheduler"}
@@ -129,6 +131,18 @@ def copy_dir_files(src_dir: Path, dst_dir: Path, dry_run: bool, update_only: boo
             copy_file(item, dst_dir / item.name, dry_run=dry_run, update_only=update_only, stats=stats)
 
 
+def copy_root_markdown_files(src_dir: Path, dst_dir: Path, dry_run: bool, update_only: bool, stats: Stats) -> None:
+    if not src_dir.exists():
+        return
+    dir_ready = ensure_dir(dst_dir, dry_run=dry_run, update_only=update_only, stats=stats)
+    if not dir_ready:
+        print(f"[SKIP:update-only] target directory missing: {dst_dir}")
+        return
+    for item in sorted(src_dir.iterdir(), key=lambda p: p.name):
+        if item.is_file() and item.suffix.lower() == ".md":
+            copy_file(item, dst_dir / item.name, dry_run=dry_run, update_only=update_only, stats=stats)
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Install/update orchestrator templates and optionally analyze a project.",
@@ -149,6 +163,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "\n"
             "  Force profile:\n"
             "    python scripts/install.py ./project.config.json --analyze-project --analyze-profile node\n"
+            "\n"
+            "  Enable optional pack:\n"
+            "    python scripts/install.py ./project.config.json --analyze-project --enable-pack session-state\n"
         ),
     )
     parser.add_argument("config_path", nargs="?", default="./project.config.json", help="Path to JSON config file.")
@@ -177,7 +194,42 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Disable post-install prompt for running project analysis.",
     )
+    parser.add_argument(
+        "--enable-pack",
+        default="",
+        help="Comma-separated optional packs to install (supported: session-state).",
+    )
     return parser.parse_args(argv)
+
+
+def parse_enabled_packs(config: dict, cli_enable_pack: str) -> list[str]:
+    packs: set[str] = set()
+
+    if cli_enable_pack:
+        for raw in cli_enable_pack.split(","):
+            p = raw.strip().lower()
+            if p:
+                packs.add(p)
+
+    config_packs = config.get("enabledPacks", [])
+    if isinstance(config_packs, str):
+        for raw in config_packs.split(","):
+            p = raw.strip().lower()
+            if p:
+                packs.add(p)
+    elif isinstance(config_packs, list):
+        for raw in config_packs:
+            if isinstance(raw, str):
+                p = raw.strip().lower()
+                if p:
+                    packs.add(p)
+
+    unknown = sorted([p for p in packs if p not in AVAILABLE_PACKS])
+    if unknown:
+        raise ValueError(
+            f"Unknown pack(s): {', '.join(unknown)}. Supported packs: {', '.join(sorted(AVAILABLE_PACKS))}"
+        )
+    return sorted(packs)
 
 
 def detect_analysis_profile(data: dict) -> str:
@@ -526,6 +578,7 @@ def run_installation(
     dry_run: bool,
     update_only: bool,
     stats: Stats,
+    enabled_packs: list[str],
 ) -> None:
     ensure_dir(target_copilot, dry_run=dry_run, update_only=update_only, stats=stats)
     ensure_dir(target_agents, dry_run=dry_run, update_only=update_only, stats=stats)
@@ -536,6 +589,22 @@ def run_installation(
     copy_dir_files(repo_root / "templates" / "copilot-config" / "agents", target_agents, dry_run=dry_run, update_only=update_only, stats=stats)
     copy_dir_files(repo_root / "templates" / "shared-docs" / "dev", target_docs / "dev", dry_run=dry_run, update_only=update_only, stats=stats)
     copy_dir_files(repo_root / "templates" / "shared-docs" / "rules", target_docs / "rules", dry_run=dry_run, update_only=update_only, stats=stats)
+    copy_root_markdown_files(repo_root / "templates" / "shared-docs", target_docs, dry_run=dry_run, update_only=update_only, stats=stats)
+
+    for pack in enabled_packs:
+        pack_root = repo_root / "templates" / "packs" / pack
+        if not pack_root.exists():
+            continue
+        pack_agents = pack_root / "copilot-config" / "agents"
+        pack_dev = pack_root / "shared-docs" / "dev"
+        pack_rules = pack_root / "shared-docs" / "rules"
+        if pack_agents.exists():
+            copy_dir_files(pack_agents, target_agents, dry_run=dry_run, update_only=update_only, stats=stats)
+        if pack_dev.exists():
+            copy_dir_files(pack_dev, target_docs / "dev", dry_run=dry_run, update_only=update_only, stats=stats)
+        if pack_rules.exists():
+            copy_dir_files(pack_rules, target_docs / "rules", dry_run=dry_run, update_only=update_only, stats=stats)
+        copy_root_markdown_files(pack_root / "shared-docs", target_docs, dry_run=dry_run, update_only=update_only, stats=stats)
 
     template_path = repo_root / "templates" / "copilot-config" / "copilot-instructions.md"
     rendered = render_template(template_path.read_text(encoding="utf-8"), tokens)
@@ -624,6 +693,7 @@ def main(argv: list[str]) -> int:
     stats = Stats()
 
     config = read_config(config_path)
+    enabled_packs = parse_enabled_packs(config, args.enable_pack)
 
     project_name = config.get("projectName", "").strip()
     project_root_raw = config.get("projectRoot", "").strip()
@@ -655,6 +725,7 @@ def main(argv: list[str]) -> int:
     print(f"- analyze-project: {args.analyze_project}")
     print(f"- analyze-only: {args.analyze_only}")
     print(f"- analyze-profile: {args.analyze_profile}")
+    print(f"- enabled packs: {', '.join(enabled_packs) if enabled_packs else 'none'}")
     print(f"- target codex home: {codex_home}")
 
     if not args.analyze_only:
@@ -682,6 +753,7 @@ def main(argv: list[str]) -> int:
             dry_run=args.dry_run,
             update_only=args.update_only,
             stats=stats,
+            enabled_packs=enabled_packs,
         )
 
     should_prompt_second_step = (

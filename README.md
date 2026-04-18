@@ -29,6 +29,8 @@ Recommended launch context:
 - Ensure `project-overview.md` exists (run stage-2 analysis if missing).
 - Keep orchestrator mode strict: planning/delegation/verification only.
 
+Mode presets (copy/paste variants): [ORCHESTRATOR-MODES.md](./templates/shared-docs/ORCHESTRATOR-MODES.md)
+
 ## Included Agent Packs (Current)
 - Core engineering orchestration:
   - Orchestrator, SC, UI-UX, UI-Test, CR, DOMAIN, VALIDATION, DOC
@@ -99,6 +101,7 @@ If a project is new and mostly empty:
 - `-ModuleSplitThreshold / --module-split-threshold`: split threshold for module docs (default: `12`)
 - `-AnalyzeProfile / --analyze-profile`: `auto|node|python|go|java|generic` (default: `auto`)
 - `-NoSecondStepPrompt / --no-second-step-prompt`: skip stage-2 prompt after install
+- `-EnablePack / --enable-pack`: optional packs, comma-separated (currently: `session-state`)
 
 ## Optional Config Fields
 In addition to required `projectName` and `projectRoot`, you can set:
@@ -110,6 +113,7 @@ In addition to required `projectName` and `projectRoot`, you can set:
 - `database`
 - `hosting`
 - `sharedTypesPath`
+- `enabledPacks` (array or comma-separated string, example: `["session-state"]`)
 
 These values are injected into generated policy docs.
 
@@ -167,6 +171,7 @@ Optional (classic local mode, if you do want local clone of installer repo):
 ```powershell
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeOnly
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -ModuleSplitThreshold 8
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeProfile node
@@ -187,6 +192,7 @@ No-PowerShell fallback (`cmd` + Python):
 ```bash
 bash ./scripts/install.sh ./project.config.json
 bash ./scripts/install.sh ./project.config.json --analyze-project
+bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state
 bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-only
 bash ./scripts/install.sh ./project.config.json --analyze-project --module-split-threshold 8
 bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-profile python
@@ -212,6 +218,8 @@ Admin rights may be required only if your project is located in a protected OS d
     rules/*.md
     rules/CONSTITUTION.md
     rules/QUALITY-GATES.md
+    ORCHESTRATOR-MODES.md
+    QUICK-COMMANDS.md (when `session-state` pack is enabled)
     project-overview.md
     analysis-summary.json
     modules/*.md (optional, when sections are large)
