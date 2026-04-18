@@ -17,6 +17,15 @@ The tool supports two stages:
 1. Install agent/rules infrastructure
 2. Analyze an existing project and generate overview documentation
 
+Admin panel baseline policy (default):
+- `admin-ui-foundation` is enforced by default as required pack
+- default `adminUiBase` is `admincore`
+- explicit opt-out is possible only with `adminUiBase=none`
+
+Session continuity policy (default):
+- `session-state` is enforced by default as required pack
+- intended for stable orchestrator progress and recovery after interruptions
+
 ## Orchestrator Start (Copy/Paste)
 Use this as a single starter command in your AI agent chat after installer setup:
 
@@ -45,6 +54,9 @@ Mode presets (copy/paste variants): [ORCHESTRATOR-MODES.md](./templates/shared-d
   - Paid-Media-Auditor, Search-Query-Analyst, Programmatic-Display-Buyer
 - Multilingual localization:
   - Language-Translator-Agent (`EN/RU/HEB`)
+- Admin UI foundation (optional pack):
+  - Admin-UI-Agent
+  - AdminCore rules + examples-first catalog workflow
 
 ## Installation Flow
 1. Read `project.config.json`
@@ -101,7 +113,9 @@ If a project is new and mostly empty:
 - `-ModuleSplitThreshold / --module-split-threshold`: split threshold for module docs (default: `12`)
 - `-AnalyzeProfile / --analyze-profile`: `auto|node|python|go|java|generic` (default: `auto`)
 - `-NoSecondStepPrompt / --no-second-step-prompt`: skip stage-2 prompt after install
-- `-EnablePack / --enable-pack`: optional packs, comma-separated (currently: `session-state`, `jira`)
+- `-EnablePack / --enable-pack`: packs, comma-separated (currently: `session-state`, `jira`, `admin-ui-foundation`; `session-state` is always auto-enabled, `admin-ui-foundation` is auto-enabled unless `adminUiBase=none`)
+- `-AdminUiBase / --admin-ui-base`: `admincore|custom|none` (default: `admincore`)
+- `-AdminUiSource / --admin-ui-source`: optional local source path for importing admin UI examples/assets
 
 ## Optional Config Fields
 In addition to required `projectName` and `projectRoot`, you can set:
@@ -113,7 +127,9 @@ In addition to required `projectName` and `projectRoot`, you can set:
 - `database`
 - `hosting`
 - `sharedTypesPath`
-- `enabledPacks` (array or comma-separated string, example: `["session-state","jira"]`)
+- `enabledPacks` (array or comma-separated string, example: `["session-state","jira","admin-ui-foundation"]`)
+- `adminUiBase` (`admincore|custom|none`, default `admincore`; `none` disables default admin-ui-foundation enforcement)
+- `adminUiSourcePath` (optional local path for importing examples/assets)
 
 These values are injected into generated policy docs.
 
@@ -173,6 +189,8 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state,jira
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiBase admincore -AdminUiSource "D:\Design\admin-ui-source\v1.24.0"
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AdminUiBase none
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeOnly
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -ModuleSplitThreshold 8
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeProfile node
@@ -195,6 +213,8 @@ bash ./scripts/install.sh ./project.config.json
 bash ./scripts/install.sh ./project.config.json --analyze-project
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state,jira
+bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-base admincore --admin-ui-source "/mnt/d/Design/admin-ui-source/v1.24.0"
+bash ./scripts/install.sh ./project.config.json --analyze-project --admin-ui-base none
 bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-only
 bash ./scripts/install.sh ./project.config.json --analyze-project --module-split-threshold 8
 bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-profile python
@@ -223,6 +243,11 @@ Admin rights may be required only if your project is located in a protected OS d
     ORCHESTRATOR-MODES.md
     QUICK-COMMANDS.md (when `session-state` pack is enabled)
     JIRA-WORKFLOW.md and QUICK-COMMANDS-JIRA.md (when `jira` pack is enabled)
+    rules/ADMIN-UI-FOUNDATION.md (when `admin-ui-foundation` pack is enabled)
+    tools/ADMINCORE-UI-KIT.md (when `admin-ui-foundation` pack is enabled)
+    tools/ADMINCORE-COMPONENT-CATALOG.md (auto-generated when source path is provided)
+    assets/admincore/css/admincore-theme.min.css
+    assets/admincore/examples/** (imported from source if provided)
     project-overview.md
     analysis-summary.json
     modules/*.md (optional, when sections are large)

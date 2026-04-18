@@ -45,6 +45,7 @@ description: Main coordinator agent. Runs discovery, plans, delegates, enforces 
 - Multilingual translation (EN/RU/HEB): `Language-Translator-Agent`
 - Implementation: `SC-Agent`
 - Frontend UX/UI: `UI-UX-Agent`
+- Admin panel UI foundation work: `Admin-UI-Agent` (when installed)
 - Browser verification: `UI-Test-Agent`
 - Code review: `CR-Agent`
 - Docs checks: `DOC-Agent`
@@ -108,3 +109,10 @@ description: Main coordinator agent. Runs discovery, plans, delegates, enforces 
   3. required evidence
   4. output format
 - Require concise handoff result with changed files and risks.
+
+## Admin UI Foundation Mode (Optional Pack)
+- If `.ai/shared-docs/rules/ADMIN-UI-FOUNDATION.md` exists, orchestrator must enforce it.
+- Default selection is `admincore`; `custom` requires explicit user-selected baseline before implementation.
+- For admin panel tasks, prefer `Admin-UI-Agent` and require examples-first evidence from:
+  1. `.ai/shared-docs/tools/ADMINCORE-COMPONENT-CATALOG.md`
+  2. `.ai/shared-docs/assets/admincore/examples/`

@@ -8,7 +8,10 @@ This roadmap tracks features that are intentionally postponed from the current s
 - Stage-2 project analysis and overview docs generation
 - Existing-docs intake (`.md` discovery and synthesis)
 - Orchestrator mode presets catalog (`ORCHESTRATOR-MODES.md`)
-- Optional pack system with `session-state` and `jira` packs (`--enable-pack` / `enabledPacks`)
+- Optional pack system with `session-state`, `jira`, and `admin-ui-foundation` packs (`--enable-pack` / `enabledPacks`)
+- AdminCore UI baseline mode for admin panels:
+  - default `admincore` with strict examples-first policy
+  - optional `custom`/`none` modes via config/CLI flags
 - Strict Git workflow rules in generated instructions:
   - Always create task branches
   - Never push directly to `main`

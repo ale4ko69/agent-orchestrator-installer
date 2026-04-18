@@ -31,7 +31,14 @@ Analysis profile: auto, node, python, go, java, generic.
 Do not ask interactive stage-2 analysis prompt after install.
 
 .PARAMETER EnablePack
-Optional comma-separated packs to install (currently: session-state, jira).
+Optional comma-separated packs to install (currently: session-state, jira, admin-ui-foundation).
+Note: session-state is always auto-enabled; admin-ui-foundation is auto-enabled unless AdminUiBase is set to none.
+
+.PARAMETER AdminUiBase
+Admin UI base policy for admin-ui-foundation pack: admincore, custom, or none.
+
+.PARAMETER AdminUiSource
+Optional source path for design examples/assets import.
 
 .EXAMPLE
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
@@ -50,6 +57,9 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -En
 
 .EXAMPLE
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state,jira
+
+.EXAMPLE
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiBase admincore -AdminUiSource "D:\Design\admin-ui-source\v1.24.0"
 #>
 
 param(
@@ -63,13 +73,18 @@ param(
   [ValidateSet("auto","node","python","go","java","generic")]
   [string]$AnalyzeProfile = "auto",
   [switch]$NoSecondStepPrompt,
-  [string]$EnablePack = ""
+  [string]$EnablePack = "",
+  [ValidateSet("admincore","custom","none")]
+  [string]$AdminUiBase = "",
+  [string]$AdminUiSource = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $ExcludedDirs = @('.git','node_modules','dist','build','.venv','venv','target','out','.next','.idea','.vscode','.ai')
-$AvailablePacks = @('session-state','jira')
+$AvailablePacks = @('session-state','jira','admin-ui-foundation')
+$AlwaysRequiredPacks = @('session-state')
+$ConditionalRequiredPacks = @('admin-ui-foundation')
 
 function Read-Config([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path)) { throw "Config not found: $Path" }
@@ -133,6 +148,16 @@ function Copy-Dir-Files([string]$SrcDir, [string]$DstDir, [bool]$IsDryRun, [bool
   }
 }
 
+function Rebrand-AdminCoreText([string]$Text) {
+  return $Text.Replace("PHOENIX","ADMINCORE").Replace("Phoenix","AdminCore").Replace("phoenix","admincore")
+}
+
+function Write-RebrandedTextFile([string]$Src, [string]$Dst, [bool]$IsDryRun, [bool]$IsUpdateOnly, [hashtable]$Stats) {
+  $raw = Get-Content -LiteralPath $Src -Raw
+  $reb = Rebrand-AdminCoreText -Text $raw
+  Write-ManagedText -Text $reb -Dst $Dst -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+}
+
 function Copy-RootMarkdown-Files([string]$SrcDir, [string]$DstDir, [bool]$IsDryRun, [bool]$IsUpdateOnly, [hashtable]$Stats) {
   if (-not (Test-Path -LiteralPath $SrcDir)) { return }
   $ready = Ensure-Dir -Path $DstDir -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
@@ -183,6 +208,102 @@ function Parse-EnabledPacks([object]$Config, [string]$CliPacks, [string[]]$Suppo
   }
 
   return @($packs | Sort-Object)
+}
+
+function Parse-AdminUiBase([object]$Config, [string]$CliAdminUiBase) {
+  $candidate = ""
+  if (-not [string]::IsNullOrWhiteSpace($CliAdminUiBase)) {
+    $candidate = $CliAdminUiBase.Trim().ToLower()
+  } elseif ($Config.PSObject.Properties.Name -contains "adminUiBase" -and -not [string]::IsNullOrWhiteSpace([string]$Config.adminUiBase)) {
+    $candidate = ([string]$Config.adminUiBase).Trim().ToLower()
+  } else {
+    $candidate = "admincore"
+  }
+
+  if (@("admincore","custom","none") -notcontains $candidate) {
+    throw "Unknown admin UI base: $candidate. Supported: admincore, custom, none"
+  }
+  return $candidate
+}
+
+function Apply-DefaultRequiredPacks([string[]]$Packs, [string]$AdminUiBase) {
+  $set = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($p in $Packs) { [void]$set.Add($p) }
+  foreach ($p in $AlwaysRequiredPacks) { [void]$set.Add($p) }
+  if ($AdminUiBase -ne "none") {
+    foreach ($p in $ConditionalRequiredPacks) { [void]$set.Add($p) }
+  }
+  return @($set | Sort-Object)
+}
+
+function Install-AdminCoreAssets(
+  [string]$TargetDocs,
+  [string]$RepoRoot,
+  [string]$AdminBase,
+  [string]$AdminSourcePath,
+  [bool]$IsDryRun,
+  [bool]$IsUpdateOnly,
+  [hashtable]$Stats
+) {
+  if ($AdminBase -ne "admincore") { return }
+
+  $kitRoot = Join-Path $RepoRoot "templates/packs/admin-ui-foundation/shared-docs/assets/admincore"
+  if (-not (Test-Path -LiteralPath $kitRoot)) { return }
+
+  $targetCss = Join-Path $TargetDocs "assets/admincore/css"
+  Ensure-Dir -Path $targetCss -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
+
+  $bundledTheme = Join-Path $kitRoot "css/admincore-theme.min.css"
+  $bundledUser = Join-Path $kitRoot "css/admincore-user.min.css"
+  if (Test-Path -LiteralPath $bundledTheme) {
+    Copy-File-Safely -Src $bundledTheme -Dst (Join-Path $targetCss "admincore-theme.min.css") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+  }
+  if (Test-Path -LiteralPath $bundledUser) {
+    Copy-File-Safely -Src $bundledUser -Dst (Join-Path $targetCss "admincore-user.min.css") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+  }
+
+  if ([string]::IsNullOrWhiteSpace($AdminSourcePath)) { return }
+  if (-not (Test-Path -LiteralPath $AdminSourcePath)) { return }
+
+  $sourceTheme = Join-Path $AdminSourcePath "assets/css/theme.min.css"
+  $sourceUser = Join-Path $AdminSourcePath "assets/css/user.min.css"
+  if (Test-Path -LiteralPath $sourceTheme) {
+    Write-RebrandedTextFile -Src $sourceTheme -Dst (Join-Path $targetCss "admincore-theme.min.css") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+  }
+  if (Test-Path -LiteralPath $sourceUser) {
+    Write-RebrandedTextFile -Src $sourceUser -Dst (Join-Path $targetCss "admincore-user.min.css") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+  }
+
+  $exampleRoot = Join-Path $TargetDocs "assets/admincore/examples"
+  $moduleRoots = @(
+    (Join-Path $AdminSourcePath "modules/components"),
+    (Join-Path $AdminSourcePath "modules/forms"),
+    (Join-Path $AdminSourcePath "modules/tables"),
+    (Join-Path $AdminSourcePath "modules/echarts")
+  )
+  $copied = @()
+  foreach ($root in $moduleRoots) {
+    if (-not (Test-Path -LiteralPath $root)) { continue }
+    Get-ChildItem -LiteralPath $root -Recurse -File -Filter *.html | ForEach-Object {
+      $rel = $_.FullName.Substring($AdminSourcePath.Length).TrimStart('\','/') -replace '\\','/'
+      $dst = Join-Path $exampleRoot $rel
+      Write-RebrandedTextFile -Src $_.FullName -Dst $dst -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+      $copied += $rel
+    }
+  }
+
+  if ($copied.Count -gt 0) {
+    $lines = @(
+      "# AdminCore Component Catalog",
+      "",
+      "Generated from source examples. Use these files as the canonical reference when composing admin UI.",
+      "",
+      "## Example Files"
+    )
+    $lines += ($copied | Select-Object -First 250 | ForEach-Object { '- ' + [char]96 + $_ + [char]96 })
+    $lines += ""
+    Write-ManagedText -Text ($lines -join "`n") -Dst (Join-Path $TargetDocs "tools/ADMINCORE-COMPONENT-CATALOG.md") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+  }
 }
 
 function Get-RelativePath([string]$Base, [string]$Full) {
@@ -495,6 +616,9 @@ $database = if ($config.database) { [string]$config.database } else { "TBD" }
 $hosting = if ($config.hosting) { [string]$config.hosting } else { "TBD" }
 $sharedTypesPath = if ($config.sharedTypesPath) { [string]$config.sharedTypesPath } else { "src/shared/types" }
 $enabledPacks = Parse-EnabledPacks -Config $config -CliPacks $EnablePack -SupportedPacks $AvailablePacks
+$effectiveAdminUiBase = Parse-AdminUiBase -Config $config -CliAdminUiBase $AdminUiBase
+$effectiveAdminUiSource = if (-not [string]::IsNullOrWhiteSpace($AdminUiSource)) { $AdminUiSource } elseif ($config.PSObject.Properties.Name -contains "adminUiSourcePath") { [string]$config.adminUiSourcePath } else { "" }
+$enabledPacks = Apply-DefaultRequiredPacks -Packs $enabledPacks -AdminUiBase $effectiveAdminUiBase
 
 if ([string]::IsNullOrWhiteSpace($projectName) -or [string]::IsNullOrWhiteSpace($projectRoot)) {
   throw "projectName and projectRoot are required"
@@ -513,6 +637,8 @@ Write-Host "- analyze-project: $AnalyzeProject"
 Write-Host "- analyze-only: $AnalyzeOnly"
 Write-Host "- analyze-profile: $AnalyzeProfile"
 Write-Host "- enabled packs: $(if ($enabledPacks.Count -gt 0) { $enabledPacks -join ', ' } else { 'none' })"
+Write-Host "- admin ui base: $effectiveAdminUiBase"
+Write-Host "- admin ui source: $(if (-not [string]::IsNullOrWhiteSpace($effectiveAdminUiSource)) { $effectiveAdminUiSource } else { 'none' })"
 Write-Host "- target codex home: $codexHome"
 
 if (-not $AnalyzeOnly) {
@@ -539,6 +665,10 @@ if (-not $AnalyzeOnly) {
     if (Test-Path -LiteralPath $packShared) {
       Copy-TreeFiles -SrcRoot $packShared -DstRoot $targetDocs -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
     }
+  }
+
+  if ($enabledPacks -contains "admin-ui-foundation") {
+    Install-AdminCoreAssets -TargetDocs $targetDocs -RepoRoot $repoRoot -AdminBase $effectiveAdminUiBase -AdminSourcePath $effectiveAdminUiSource -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
   }
 
   $tokens = @{

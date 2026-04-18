@@ -39,10 +39,15 @@ Work as strict Orchestrator. Keep active user discussion as priority #1. Do not 
 
 ## 8. Session-State Mode (requires session-state pack)
 ```text
-Work as strict Orchestrator with session-state protocol. For non-trivial tasks, maintain .results/spec/<TASK-ID>/session-state.md, update it before/after each delegated step, and support quick commands: sessions, close session <name>, delete session <name>.
+Work as strict Orchestrator with session-state protocol. For non-trivial tasks, maintain .results/spec/<WORK-ID>/session-state.md, update it before/after each delegated step, and support quick commands: sessions, close session <name>, delete session <name>.
 ```
 
 ## 9. Jira Task Mode (requires jira pack)
 ```text
 Work as strict Orchestrator in Jira task mode. Read Jira task metadata first, set task to In Progress when work starts, keep implementation delegated to subagents, and post a final concise Jira summary with verification evidence.
+```
+
+## 10. Admin UI Foundation Mode (requires admin-ui-foundation pack)
+```text
+Work as strict Orchestrator for admin panel UI using AdminCore foundation. Before UI implementation, require examples-first evidence from .ai/shared-docs/tools/ADMINCORE-COMPONENT-CATALOG.md and .ai/shared-docs/assets/admincore/examples/. Route admin UI tasks through Admin-UI-Agent, validate with UI-Test-Agent, and reject ad-hoc styling that ignores baseline patterns.
 ```

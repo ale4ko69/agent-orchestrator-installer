@@ -7,7 +7,7 @@ Use this protocol for non-trivial multi-step tasks to preserve progress across i
 - `session-state.md`: live execution state (current progress)
 
 ## Scope
-- Task scope: `<project>/.results/spec/<TASK-ID>/session-state.md`
+- Work-item scope: `<project>/.results/spec/<WORK-ID>/session-state.md`
 - Topic scope: `<project>/.results/sessions/<topic>/session-state.md`
 
 ## Required Updates
@@ -32,4 +32,3 @@ Use this protocol for non-trivial multi-step tasks to preserve progress across i
 ## Orchestrator Rule
 - Orchestrator owns session-state updates.
 - Subagents are stateless and do not edit session-state directly.
-
