@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import json
 import os
+import re
 import shutil
 import sys
+import urllib.parse
+import urllib.request
+import zipfile
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -132,12 +137,129 @@ def remove_file(path: Path, dry_run: bool, stats: Stats) -> None:
 
 
 def rebrand_admincore_text(text: str) -> str:
-    return text.replace("PHOENIX", "ADMINCORE").replace("Phoenix", "AdminCore").replace("phoenix", "admincore")
+    return (
+        text.replace("PHOENIX", "ADMINCORE")
+        .replace("Phoenix", "AdminCore")
+        .replace("phoenix", "admincore")
+        .replace("Prium", "AdminCore")
+        .replace("prium", "admincore")
+        .replace("prium.github.io/phoenix", "admincore.local/examples")
+    )
+
+
+def neutralize_html_anchor_hrefs(text: str) -> str:
+    anchor_rx = re.compile(r'(<a\b[^>]*?\bhref\s*=\s*")([^"]*)(")', flags=re.IGNORECASE)
+
+    def _replace(match: re.Match[str]) -> str:
+        href = match.group(2).strip()
+        if href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            return match.group(0)
+        return f'{match.group(1)}#{match.group(3)}'
+
+    return anchor_rx.sub(_replace, text)
 
 
 def write_rebranded_text_file(src: Path, dst: Path, dry_run: bool, update_only: bool, stats: Stats) -> None:
     text = src.read_text(encoding="utf-8", errors="ignore")
-    write_text_file(rebrand_admincore_text(text), dst, dry_run=dry_run, update_only=update_only, stats=stats)
+    text = rebrand_admincore_text(text)
+    if src.suffix.lower() in {".html", ".htm"}:
+        text = neutralize_html_anchor_hrefs(text)
+    write_text_file(text, dst, dry_run=dry_run, update_only=update_only, stats=stats)
+
+
+def compute_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while True:
+            chunk = f.read(1024 * 1024)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def find_admin_ui_source_root(root: Path) -> Path | None:
+    candidates: list[Path] = []
+    if (root / "assets" / "css" / "theme.min.css").exists():
+        candidates.append(root)
+
+    for d in root.rglob("*"):
+        if not d.is_dir():
+            continue
+        if (d / "assets" / "css" / "theme.min.css").exists():
+            candidates.append(d)
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda p: len(p.as_posix()))[0]
+
+
+def resolve_admin_ui_source(
+    source_path_raw: str,
+    source_url_raw: str,
+    source_sha256: str,
+    cache_dir_raw: str,
+    project_root: Path,
+    dry_run: bool,
+) -> Path | None:
+    if source_path_raw:
+        direct = Path(source_path_raw).expanduser()
+        if direct.exists():
+            return direct.resolve()
+
+    if not source_url_raw:
+        return None
+
+    if dry_run:
+        print(f"[DRY-RUN] would fetch admin UI source archive from: {source_url_raw}")
+        return None
+
+    cache_dir = Path(cache_dir_raw).expanduser() if cache_dir_raw else (project_root / ".tmp" / "admin-ui-cache")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    downloads_dir = cache_dir / "downloads"
+    extracted_dir = cache_dir / "extracted"
+    downloads_dir.mkdir(parents=True, exist_ok=True)
+    extracted_dir.mkdir(parents=True, exist_ok=True)
+
+    parsed = urllib.parse.urlparse(source_url_raw)
+    is_remote = parsed.scheme in {"http", "https"}
+
+    if is_remote:
+        filename = Path(parsed.path).name or "admin-ui-source.zip"
+        zip_path = downloads_dir / filename
+        print(f"Downloading admin UI archive: {source_url_raw}")
+        urllib.request.urlretrieve(source_url_raw, zip_path.as_posix())
+    else:
+        zip_path = Path(source_url_raw).expanduser()
+        if not zip_path.exists():
+            raise FileNotFoundError(f"Admin UI source URL/path not found: {source_url_raw}")
+
+    if zip_path.suffix.lower() != ".zip":
+        raise ValueError(f"Admin UI source must be a .zip archive: {zip_path}")
+
+    actual_sha = compute_sha256(zip_path)
+    if source_sha256:
+        expected = source_sha256.strip().lower()
+        if actual_sha.lower() != expected:
+            raise ValueError(f"Admin UI archive checksum mismatch: expected {expected}, got {actual_sha}")
+    print(f"Admin UI archive sha256: {actual_sha}")
+
+    extract_target = extracted_dir / actual_sha
+    marker = extract_target / ".extracted-ok"
+    if not marker.exists():
+        if extract_target.exists():
+            shutil.rmtree(extract_target, ignore_errors=True)
+        extract_target.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(extract_target)
+        marker.write_text("ok", encoding="utf-8")
+
+    source_root = find_admin_ui_source_root(extract_target)
+    if not source_root:
+        raise ValueError(
+            "Could not find valid admin UI source root in extracted archive. Expected assets/css/theme.min.css."
+        )
+    print(f"Admin UI source root: {source_root}")
+    return source_root
 
 
 def copy_dir_files(src_dir: Path, dst_dir: Path, dry_run: bool, update_only: bool, stats: Stats) -> None:
@@ -201,6 +323,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack session-state,jira\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack video-ops\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-base admincore --admin-ui-source \"D:/Design/admin-ui-source/v1.24.0\"\n"
+            "    python scripts/install.py ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-source-url \"https://example.com/admin-ui-v1.24.0.zip\" --admin-ui-sha256 \"<sha256>\"\n"
         ),
     )
     parser.add_argument("config_path", nargs="?", default="./project.config.json", help="Path to JSON config file.")
@@ -244,6 +367,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--admin-ui-source",
         default="",
         help="Optional source path for design examples/assets import (for admin-ui-foundation pack).",
+    )
+    parser.add_argument(
+        "--admin-ui-source-url",
+        default="",
+        help="Optional URL/path to .zip archive with admin UI source snapshot.",
+    )
+    parser.add_argument(
+        "--admin-ui-sha256",
+        default="",
+        help="Optional sha256 checksum for admin UI source archive verification.",
+    )
+    parser.add_argument(
+        "--admin-ui-cache-dir",
+        default="",
+        help="Optional cache dir for downloaded/extracted admin UI archives (default: <projectRoot>/.tmp/admin-ui-cache).",
     )
     return parser.parse_args(argv)
 
@@ -301,7 +439,7 @@ def install_admincore_assets(
     target_docs: Path,
     repo_root: Path,
     admin_ui_base: str,
-    admin_ui_source: str,
+    admin_ui_source: Path | None,
     dry_run: bool,
     update_only: bool,
     stats: Stats,
@@ -323,7 +461,7 @@ def install_admincore_assets(
     if bundled_user_css.exists():
         copy_file(bundled_user_css, target_css_dir / "admincore-user.min.css", dry_run=dry_run, update_only=update_only, stats=stats)
 
-    source_root = Path(admin_ui_source).expanduser() if admin_ui_source else None
+    source_root = admin_ui_source if admin_ui_source else None
     if not source_root or not source_root.exists():
         return
 
@@ -830,7 +968,7 @@ def run_installation(
     stats: Stats,
     enabled_packs: list[str],
     admin_ui_base: str,
-    admin_ui_source: str,
+    admin_ui_source: Path | None,
 ) -> None:
     ensure_dir(target_copilot, dry_run=dry_run, update_only=update_only, stats=stats)
     ensure_dir(target_agents, dry_run=dry_run, update_only=update_only, stats=stats)
@@ -978,13 +1116,26 @@ def main(argv: list[str]) -> int:
     database = config.get("database", "TBD").strip() or "TBD"
     hosting = config.get("hosting", "TBD").strip() or "TBD"
     shared_types_path = config.get("sharedTypesPath", "src/shared/types").strip() or "src/shared/types"
-    admin_ui_source = (args.admin_ui_source or str(config.get("adminUiSourcePath", "")).strip())
+    admin_ui_source_raw = (args.admin_ui_source or str(config.get("adminUiSourcePath", "")).strip())
+    admin_ui_source_url = (args.admin_ui_source_url or str(config.get("adminUiSourceUrl", "")).strip())
+    admin_ui_sha256 = (args.admin_ui_sha256 or str(config.get("adminUiSourceSha256", "")).strip())
+    admin_ui_cache_dir = (args.admin_ui_cache_dir or str(config.get("adminUiCacheDir", "")).strip())
 
     if not project_name or not project_root_raw:
         raise ValueError("projectName and projectRoot are required")
 
     project_root = Path(project_root_raw)
     codex_home = Path(codex_home_raw) if codex_home_raw else project_root / ".ai"
+    admin_ui_source: Path | None = None
+    if "admin-ui-foundation" in enabled_packs and admin_ui_base == "admincore":
+        admin_ui_source = resolve_admin_ui_source(
+            source_path_raw=admin_ui_source_raw,
+            source_url_raw=admin_ui_source_url,
+            source_sha256=admin_ui_sha256,
+            cache_dir_raw=admin_ui_cache_dir,
+            project_root=project_root,
+            dry_run=args.dry_run,
+        )
 
     target_copilot = codex_home / "copilot-config"
     target_agents = target_copilot / "agents"
@@ -998,7 +1149,9 @@ def main(argv: list[str]) -> int:
     print(f"- analyze-profile: {args.analyze_profile}")
     print(f"- enabled packs: {', '.join(enabled_packs) if enabled_packs else 'none'}")
     print(f"- admin ui base: {admin_ui_base}")
-    print(f"- admin ui source: {admin_ui_source if admin_ui_source else 'none'}")
+    print(f"- admin ui source path: {admin_ui_source_raw if admin_ui_source_raw else 'none'}")
+    print(f"- admin ui source url: {admin_ui_source_url if admin_ui_source_url else 'none'}")
+    print(f"- admin ui source resolved: {admin_ui_source if admin_ui_source else 'none'}")
     print(f"- target codex home: {codex_home}")
 
     if not args.analyze_only:

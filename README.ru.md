@@ -111,6 +111,7 @@ graph TD
 - Видео workflow (optional pack):
   - Video-Download-Editor-Agent
   - Проверка yt-dlp/ffmpeg + готовые рецепты download/edit/convert
+  - Только для custom media-проектов (opt-in)
 
 ## Полный флоу установки
 1. Читает `project.config.json`
@@ -160,6 +161,20 @@ graph TD
 - unknowns и риски помечаются явно
 - после первого scaffold-коммита можно перезапустить анализ
 
+## ZIP Workflow Для Admin UI Source
+Для удобства source админки можно передавать как `.zip` архив, а не только как локальную папку.
+
+Порядок выбора источника:
+1. `--admin-ui-source` (локальная папка)
+2. `--admin-ui-source-url` (http/https URL или локальный путь к `.zip`)
+
+Что делает архивный режим:
+- скачивает архив в кэш (или использует локальный zip)
+- проверяет checksum при передаче `--admin-ui-sha256`
+- распаковывает архив в кэш
+- автоопределяет корень source по `assets/css/theme.min.css`
+- импортирует и санитизирует примеры/ассеты под AdminCore
+
 ## Режимы и флаги
 - `-DryRun / --dry-run`: показать изменения без записи файлов
 - `-UpdateOnly / --update-only`: обновлять только существующие файлы
@@ -171,6 +186,9 @@ graph TD
 - `-EnablePack / --enable-pack`: подключить pack'и через запятую (сейчас: `session-state`, `jira`, `admin-ui-foundation`, `video-ops`; `session-state` подключается всегда автоматически, `admin-ui-foundation` подключается автоматически, если не задан `adminUiBase=none`)
 - `-AdminUiBase / --admin-ui-base`: `admincore|custom|none` (по умолчанию: `admincore`)
 - `-AdminUiSource / --admin-ui-source`: опциональный путь к локальному дизайн-источнику для импорта примеров/ассетов
+- `--admin-ui-source-url`: опциональный URL/путь к `.zip` архиву со snapshot админки
+- `--admin-ui-sha256`: опциональная проверка checksum архива
+- `--admin-ui-cache-dir`: опциональная папка кэша для скачанного/распакованного архива
 
 Дополнительные поля в `project.config.json` (опционально):
 - `authProvider`
@@ -184,6 +202,9 @@ graph TD
 - `enabledPacks` (массив или строка через запятую, пример: `["session-state","jira","admin-ui-foundation","video-ops"]`)
 - `adminUiBase` (`admincore|custom|none`, по умолчанию `admincore`; `none` отключает дефолтную привязку к admin-ui-foundation)
 - `adminUiSourcePath` (опциональный локальный путь для импорта примеров/ассетов)
+- `adminUiSourceUrl` (опциональный URL/путь к `.zip` архиву)
+- `adminUiSourceSha256` (опциональная checksum архива)
+- `adminUiCacheDir` (опциональная папка кэша)
 
 ## Help по флагам
 - Linux/macOS/WSL:
@@ -241,6 +262,7 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -En
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state,jira
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack video-ops
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiBase admincore -AdminUiSource "D:\Design\admin-ui-source\v1.24.0"
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiSourceUrl "https://example.com/admin-ui-v1.24.0.zip" -AdminUiSha256 "<sha256>"
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AdminUiBase none
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeOnly
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -ModuleSplitThreshold 8
@@ -266,6 +288,7 @@ bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack 
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state,jira
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack video-ops
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-base admincore --admin-ui-source "/mnt/d/Design/admin-ui-source/v1.24.0"
+bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-source-url "https://example.com/admin-ui-v1.24.0.zip" --admin-ui-sha256 "<sha256>"
 bash ./scripts/install.sh ./project.config.json --analyze-project --admin-ui-base none
 bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-only
 bash ./scripts/install.sh ./project.config.json --analyze-project --module-split-threshold 8

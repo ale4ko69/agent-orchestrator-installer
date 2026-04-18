@@ -14,5 +14,8 @@
   "sharedTypesPath": "src/shared/types",
   "enabledPacks": ["jira"],
   "adminUiBase": "admincore",
-  "adminUiSourcePath": "D:/Design/admin-ui-source/v1.24.0"
+  "adminUiSourcePath": "D:/Design/admin-ui-source/v1.24.0",
+  "adminUiSourceUrl": "https://example.com/admin-ui-v1.24.0.zip",
+  "adminUiSourceSha256": "",
+  "adminUiCacheDir": "D:/path/to/project/.tmp/admin-ui-cache"
 }

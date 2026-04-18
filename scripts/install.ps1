@@ -40,6 +40,15 @@ Admin UI base policy for admin-ui-foundation pack: admincore, custom, or none.
 .PARAMETER AdminUiSource
 Optional source path for design examples/assets import.
 
+.PARAMETER AdminUiSourceUrl
+Optional URL/path to .zip archive with admin UI source snapshot.
+
+.PARAMETER AdminUiSha256
+Optional sha256 checksum for admin UI source archive verification.
+
+.PARAMETER AdminUiCacheDir
+Optional cache directory for downloaded/extracted admin UI archive.
+
 .EXAMPLE
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
 
@@ -60,6 +69,9 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -En
 
 .EXAMPLE
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiBase admincore -AdminUiSource "D:\Design\admin-ui-source\v1.24.0"
+
+.EXAMPLE
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiSourceUrl "https://example.com/admin-ui-v1.24.0.zip" -AdminUiSha256 "<sha256>"
 #>
 
 param(
@@ -76,7 +88,10 @@ param(
   [string]$EnablePack = "",
   [ValidateSet("admincore","custom","none")]
   [string]$AdminUiBase = "",
-  [string]$AdminUiSource = ""
+  [string]$AdminUiSource = "",
+  [string]$AdminUiSourceUrl = "",
+  [string]$AdminUiSha256 = "",
+  [string]$AdminUiCacheDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -149,12 +164,34 @@ function Copy-Dir-Files([string]$SrcDir, [string]$DstDir, [bool]$IsDryRun, [bool
 }
 
 function Rebrand-AdminCoreText([string]$Text) {
-  return $Text.Replace("PHOENIX","ADMINCORE").Replace("Phoenix","AdminCore").Replace("phoenix","admincore")
+  return $Text.
+    Replace("PHOENIX","ADMINCORE").
+    Replace("Phoenix","AdminCore").
+    Replace("phoenix","admincore").
+    Replace("Prium","AdminCore").
+    Replace("prium","admincore").
+    Replace("prium.github.io/phoenix","admincore.local/examples")
+}
+
+function Neutralize-AnchorHrefs([string]$Text) {
+  $rx = New-Object System.Text.RegularExpressions.Regex '(<a\b[^>]*?\bhref\s*=\s*")([^"]*)(")', ([System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+  $evaluator = [System.Text.RegularExpressions.MatchEvaluator]{
+    param($m)
+    $href = $m.Groups[2].Value.Trim()
+    if ($href.StartsWith("#") -or $href.StartsWith("mailto:") -or $href.StartsWith("tel:") -or $href.StartsWith("javascript:")) {
+      return $m.Value
+    }
+    return $m.Groups[1].Value + "#" + $m.Groups[3].Value
+  }
+  return $rx.Replace($Text, $evaluator)
 }
 
 function Write-RebrandedTextFile([string]$Src, [string]$Dst, [bool]$IsDryRun, [bool]$IsUpdateOnly, [hashtable]$Stats) {
   $raw = Get-Content -LiteralPath $Src -Raw
   $reb = Rebrand-AdminCoreText -Text $raw
+  if ([System.IO.Path]::GetExtension($Src).ToLower() -in @(".html",".htm")) {
+    $reb = Neutralize-AnchorHrefs -Text $reb
+  }
   Write-ManagedText -Text $reb -Dst $Dst -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
 }
 
@@ -234,6 +271,94 @@ function Apply-DefaultRequiredPacks([string[]]$Packs, [string]$AdminUiBase) {
     foreach ($p in $ConditionalRequiredPacks) { [void]$set.Add($p) }
   }
   return @($set | Sort-Object)
+}
+
+function Get-FileSha256([string]$Path) {
+  $hash = Get-FileHash -LiteralPath $Path -Algorithm SHA256
+  return $hash.Hash.ToLower()
+}
+
+function Find-AdminUiSourceRoot([string]$RootPath) {
+  if (Test-Path -LiteralPath (Join-Path $RootPath "assets/css/theme.min.css")) {
+    return $RootPath
+  }
+  $dirs = Get-ChildItem -LiteralPath $RootPath -Directory -Recurse -ErrorAction SilentlyContinue
+  foreach ($d in $dirs) {
+    if (Test-Path -LiteralPath (Join-Path $d.FullName "assets/css/theme.min.css")) {
+      return $d.FullName
+    }
+  }
+  return $null
+}
+
+function Resolve-AdminUiSource(
+  [string]$SourcePathRaw,
+  [string]$SourceUrlRaw,
+  [string]$SourceSha256,
+  [string]$CacheDirRaw,
+  [string]$ProjectRoot,
+  [bool]$IsDryRun
+) {
+  if (-not [string]::IsNullOrWhiteSpace($SourcePathRaw) -and (Test-Path -LiteralPath $SourcePathRaw)) {
+    return (Resolve-Path $SourcePathRaw).Path
+  }
+
+  if ([string]::IsNullOrWhiteSpace($SourceUrlRaw)) {
+    return $null
+  }
+
+  if ($IsDryRun) {
+    Write-Host "[DRY-RUN] would fetch admin UI source archive from: $SourceUrlRaw"
+    return $null
+  }
+
+  $cacheDir = if (-not [string]::IsNullOrWhiteSpace($CacheDirRaw)) { $CacheDirRaw } else { Join-Path $ProjectRoot ".tmp/admin-ui-cache" }
+  $downloadsDir = Join-Path $cacheDir "downloads"
+  $extractedDir = Join-Path $cacheDir "extracted"
+  New-Item -ItemType Directory -Path $downloadsDir -Force | Out-Null
+  New-Item -ItemType Directory -Path $extractedDir -Force | Out-Null
+
+  $zipPath = $null
+  if ($SourceUrlRaw -match '^https?://') {
+    $fileName = [System.IO.Path]::GetFileName(([System.Uri]$SourceUrlRaw).AbsolutePath)
+    if ([string]::IsNullOrWhiteSpace($fileName)) { $fileName = "admin-ui-source.zip" }
+    $zipPath = Join-Path $downloadsDir $fileName
+    Write-Host "Downloading admin UI archive: $SourceUrlRaw"
+    Invoke-WebRequest -Uri $SourceUrlRaw -OutFile $zipPath
+  } else {
+    $zipPath = $SourceUrlRaw
+    if (-not (Test-Path -LiteralPath $zipPath)) {
+      throw "Admin UI source URL/path not found: $SourceUrlRaw"
+    }
+  }
+
+  if ([System.IO.Path]::GetExtension($zipPath).ToLower() -ne ".zip") {
+    throw "Admin UI source must be a .zip archive: $zipPath"
+  }
+
+  $actualSha = Get-FileSha256 -Path $zipPath
+  if (-not [string]::IsNullOrWhiteSpace($SourceSha256)) {
+    if ($actualSha -ne $SourceSha256.Trim().ToLower()) {
+      throw "Admin UI archive checksum mismatch: expected $($SourceSha256.Trim().ToLower()), got $actualSha"
+    }
+  }
+  Write-Host "Admin UI archive sha256: $actualSha"
+
+  $extractTarget = Join-Path $extractedDir $actualSha
+  $marker = Join-Path $extractTarget ".extracted-ok"
+  if (-not (Test-Path -LiteralPath $marker)) {
+    if (Test-Path -LiteralPath $extractTarget) { Remove-Item -LiteralPath $extractTarget -Recurse -Force }
+    New-Item -ItemType Directory -Path $extractTarget -Force | Out-Null
+    Expand-Archive -LiteralPath $zipPath -DestinationPath $extractTarget -Force
+    Set-Content -LiteralPath $marker -Value "ok" -Encoding UTF8
+  }
+
+  $root = Find-AdminUiSourceRoot -RootPath $extractTarget
+  if (-not $root) {
+    throw "Could not find valid admin UI source root in extracted archive. Expected assets/css/theme.min.css."
+  }
+  Write-Host "Admin UI source root: $root"
+  return $root
 }
 
 function Install-AdminCoreAssets(
@@ -618,6 +743,9 @@ $sharedTypesPath = if ($config.sharedTypesPath) { [string]$config.sharedTypesPat
 $enabledPacks = Parse-EnabledPacks -Config $config -CliPacks $EnablePack -SupportedPacks $AvailablePacks
 $effectiveAdminUiBase = Parse-AdminUiBase -Config $config -CliAdminUiBase $AdminUiBase
 $effectiveAdminUiSource = if (-not [string]::IsNullOrWhiteSpace($AdminUiSource)) { $AdminUiSource } elseif ($config.PSObject.Properties.Name -contains "adminUiSourcePath") { [string]$config.adminUiSourcePath } else { "" }
+$effectiveAdminUiSourceUrl = if (-not [string]::IsNullOrWhiteSpace($AdminUiSourceUrl)) { $AdminUiSourceUrl } elseif ($config.PSObject.Properties.Name -contains "adminUiSourceUrl") { [string]$config.adminUiSourceUrl } else { "" }
+$effectiveAdminUiSha256 = if (-not [string]::IsNullOrWhiteSpace($AdminUiSha256)) { $AdminUiSha256 } elseif ($config.PSObject.Properties.Name -contains "adminUiSourceSha256") { [string]$config.adminUiSourceSha256 } else { "" }
+$effectiveAdminUiCacheDir = if (-not [string]::IsNullOrWhiteSpace($AdminUiCacheDir)) { $AdminUiCacheDir } elseif ($config.PSObject.Properties.Name -contains "adminUiCacheDir") { [string]$config.adminUiCacheDir } else { "" }
 $enabledPacks = Apply-DefaultRequiredPacks -Packs $enabledPacks -AdminUiBase $effectiveAdminUiBase
 
 if ([string]::IsNullOrWhiteSpace($projectName) -or [string]::IsNullOrWhiteSpace($projectRoot)) {
@@ -627,6 +755,10 @@ if ([string]::IsNullOrWhiteSpace($projectName) -or [string]::IsNullOrWhiteSpace(
 $targetCopilot = Join-Path $codexHome "copilot-config"
 $targetAgents = Join-Path $targetCopilot "agents"
 $targetDocs = Join-Path $codexHome "shared-docs"
+$resolvedAdminUiSource = $null
+if (($enabledPacks -contains "admin-ui-foundation") -and $effectiveAdminUiBase -eq "admincore") {
+  $resolvedAdminUiSource = Resolve-AdminUiSource -SourcePathRaw $effectiveAdminUiSource -SourceUrlRaw $effectiveAdminUiSourceUrl -SourceSha256 $effectiveAdminUiSha256 -CacheDirRaw $effectiveAdminUiCacheDir -ProjectRoot $projectRoot -IsDryRun $DryRun
+}
 
 $stats = @{ created_dirs = 0; created_files = 0; updated_files = 0; skipped_files = 0 }
 
@@ -638,7 +770,9 @@ Write-Host "- analyze-only: $AnalyzeOnly"
 Write-Host "- analyze-profile: $AnalyzeProfile"
 Write-Host "- enabled packs: $(if ($enabledPacks.Count -gt 0) { $enabledPacks -join ', ' } else { 'none' })"
 Write-Host "- admin ui base: $effectiveAdminUiBase"
-Write-Host "- admin ui source: $(if (-not [string]::IsNullOrWhiteSpace($effectiveAdminUiSource)) { $effectiveAdminUiSource } else { 'none' })"
+Write-Host "- admin ui source path: $(if (-not [string]::IsNullOrWhiteSpace($effectiveAdminUiSource)) { $effectiveAdminUiSource } else { 'none' })"
+Write-Host "- admin ui source url: $(if (-not [string]::IsNullOrWhiteSpace($effectiveAdminUiSourceUrl)) { $effectiveAdminUiSourceUrl } else { 'none' })"
+Write-Host "- admin ui source resolved: $(if (-not [string]::IsNullOrWhiteSpace($resolvedAdminUiSource)) { $resolvedAdminUiSource } else { 'none' })"
 Write-Host "- target codex home: $codexHome"
 
 if (-not $AnalyzeOnly) {
@@ -668,7 +802,7 @@ if (-not $AnalyzeOnly) {
   }
 
   if ($enabledPacks -contains "admin-ui-foundation") {
-    Install-AdminCoreAssets -TargetDocs $targetDocs -RepoRoot $repoRoot -AdminBase $effectiveAdminUiBase -AdminSourcePath $effectiveAdminUiSource -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
+    Install-AdminCoreAssets -TargetDocs $targetDocs -RepoRoot $repoRoot -AdminBase $effectiveAdminUiBase -AdminSourcePath $resolvedAdminUiSource -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
   }
 
   $tokens = @{

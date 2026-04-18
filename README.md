@@ -113,6 +113,7 @@ Mode presets (copy/paste variants): [ORCHESTRATOR-MODES.md](./templates/shared-d
 - Video operations (optional pack):
   - Video-Download-Editor-Agent
   - yt-dlp/ffmpeg check scripts + download/edit recipes
+  - Custom-project profile only (opt-in)
 
 ## Installation Flow
 1. Read `project.config.json`
@@ -161,6 +162,20 @@ If a project is new and mostly empty:
 - unknowns/risks are marked explicitly
 - rerun analysis after first scaffold commit
 
+## Admin UI ZIP Source Workflow
+For convenience, Admin UI source can be provided as a zip archive instead of a local folder.
+
+Resolution order:
+1. `--admin-ui-source` (local folder path)
+2. `--admin-ui-source-url` (http/https URL or local `.zip` path)
+
+Archive mode behavior:
+- downloads archive into cache (or uses local zip path)
+- verifies checksum when `--admin-ui-sha256` is provided
+- extracts archive to cache directory
+- auto-detects source root containing `assets/css/theme.min.css`
+- imports and sanitizes examples/assets for AdminCore usage
+
 ## Flags
 - `-DryRun / --dry-run`: preview changes without writing files
 - `-UpdateOnly / --update-only`: update existing files only
@@ -172,6 +187,9 @@ If a project is new and mostly empty:
 - `-EnablePack / --enable-pack`: packs, comma-separated (currently: `session-state`, `jira`, `admin-ui-foundation`, `video-ops`; `session-state` is always auto-enabled, `admin-ui-foundation` is auto-enabled unless `adminUiBase=none`)
 - `-AdminUiBase / --admin-ui-base`: `admincore|custom|none` (default: `admincore`)
 - `-AdminUiSource / --admin-ui-source`: optional local source path for importing admin UI examples/assets
+- `--admin-ui-source-url`: optional URL/path to `.zip` archive with admin UI source snapshot
+- `--admin-ui-sha256`: optional checksum verification for downloaded archive
+- `--admin-ui-cache-dir`: optional cache directory for downloaded/extracted archive
 
 ## Optional Config Fields
 In addition to required `projectName` and `projectRoot`, you can set:
@@ -186,6 +204,9 @@ In addition to required `projectName` and `projectRoot`, you can set:
 - `enabledPacks` (array or comma-separated string, example: `["session-state","jira","admin-ui-foundation","video-ops"]`)
 - `adminUiBase` (`admincore|custom|none`, default `admincore`; `none` disables default admin-ui-foundation enforcement)
 - `adminUiSourcePath` (optional local path for importing examples/assets)
+- `adminUiSourceUrl` (optional URL/path to `.zip` archive)
+- `adminUiSourceSha256` (optional archive checksum)
+- `adminUiCacheDir` (optional cache directory)
 
 These values are injected into generated policy docs.
 
@@ -247,6 +268,7 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -En
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state,jira
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack video-ops
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiBase admincore -AdminUiSource "D:\Design\admin-ui-source\v1.24.0"
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiSourceUrl "https://example.com/admin-ui-v1.24.0.zip" -AdminUiSha256 "<sha256>"
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AdminUiBase none
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeOnly
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -ModuleSplitThreshold 8
@@ -272,6 +294,7 @@ bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack 
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state,jira
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack video-ops
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-base admincore --admin-ui-source "/mnt/d/Design/admin-ui-source/v1.24.0"
+bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-source-url "https://example.com/admin-ui-v1.24.0.zip" --admin-ui-sha256 "<sha256>"
 bash ./scripts/install.sh ./project.config.json --analyze-project --admin-ui-base none
 bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-only
 bash ./scripts/install.sh ./project.config.json --analyze-project --module-split-threshold 8
