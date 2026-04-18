@@ -175,6 +175,10 @@ graph TD
 - автоопределяет корень source по `assets/css/theme.min.css`
 - импортирует и санитизирует примеры/ассеты под AdminCore
 
+Готовый production-пример:
+- URL: `https://github.com/ale4ko69/agent-orchestrator-installer/releases/download/admin-ui-v1.24.0-sanitized/admin-ui-v1.24.0-sanitized.zip`
+- SHA256: `036238da45f8b9a9220cd40c7e54cf54d4210082628f25c47a2b8aaaf2cc1f4c`
+
 ## Режимы и флаги
 - `-DryRun / --dry-run`: показать изменения без записи файлов
 - `-UpdateOnly / --update-only`: обновлять только существующие файлы

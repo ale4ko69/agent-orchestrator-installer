@@ -176,6 +176,10 @@ Archive mode behavior:
 - auto-detects source root containing `assets/css/theme.min.css`
 - imports and sanitizes examples/assets for AdminCore usage
 
+Production example (ready to use):
+- URL: `https://github.com/ale4ko69/agent-orchestrator-installer/releases/download/admin-ui-v1.24.0-sanitized/admin-ui-v1.24.0-sanitized.zip`
+- SHA256: `036238da45f8b9a9220cd40c7e54cf54d4210082628f25c47a2b8aaaf2cc1f4c`
+
 ## Flags
 - `-DryRun / --dry-run`: preview changes without writing files
 - `-UpdateOnly / --update-only`: update existing files only
