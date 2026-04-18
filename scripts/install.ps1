@@ -31,7 +31,7 @@ Analysis profile: auto, node, python, go, java, generic.
 Do not ask interactive stage-2 analysis prompt after install.
 
 .PARAMETER EnablePack
-Optional comma-separated packs to install (currently: session-state, jira, admin-ui-foundation).
+Optional comma-separated packs to install (currently: session-state, jira, admin-ui-foundation, video-ops).
 Note: session-state is always auto-enabled; admin-ui-foundation is auto-enabled unless AdminUiBase is set to none.
 
 .PARAMETER AdminUiBase
@@ -82,7 +82,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ExcludedDirs = @('.git','node_modules','dist','build','.venv','venv','target','out','.next','.idea','.vscode','.ai')
-$AvailablePacks = @('session-state','jira','admin-ui-foundation')
+$AvailablePacks = @('session-state','jira','admin-ui-foundation','video-ops')
 $AlwaysRequiredPacks = @('session-state')
 $ConditionalRequiredPacks = @('admin-ui-foundation')
 

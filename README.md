@@ -15,6 +15,7 @@ Skill pack specs (separate README per skill):
 - [image-router](./docs/skills/image-router/README.md)
 - [nano-banana-pro](./docs/skills/nano-banana-pro/README.md)
 - [google-messages](./docs/skills/google-messages/README.md)
+- [video-ops](./docs/skills/video-ops/README.md)
 
 ## Supported OS
 - Windows (PowerShell)
@@ -35,6 +36,48 @@ Admin panel baseline policy (default):
 Session continuity policy (default):
 - `session-state` is enforced by default as required pack
 - intended for stable orchestrator progress and recovery after interruptions
+
+## Installation And Dependency Map
+```mermaid
+flowchart TD
+  A["Start installer"] --> B["Read project.config.json"]
+  B --> C["Resolve adminUiBase and enabled packs"]
+  C --> D["Apply required packs"]
+  D --> D1["Always add: session-state"]
+  D --> D2["Add admin-ui-foundation when adminUiBase != none"]
+  D --> E["Install Stage 1"]
+  E --> E1["Copy core agents (32 files)"]
+  E --> E2["Copy shared docs and rules"]
+  E --> E3["Apply selected packs (jira, session-state, admin-ui-foundation)"]
+  E --> E4["Render copilot-instructions + constitution + quality gates"]
+  E --> F{"Run Stage 2 analysis?"}
+  F -->|Yes| G["Scan repo + markdown docs + manifests"]
+  G --> H["Generate project-overview.md + analysis-summary.json (+ modules/*.md if needed)"]
+  F -->|No| I["Finish Stage 1 only"]
+```
+
+```mermaid
+graph TD
+  I["Installer"] --> CORE["Core templates"]
+  CORE --> AGENTS["Core agent pool (32)"]
+  CORE --> DOCS["Shared docs/rules/dev"]
+  I --> POLICY["Pack policy resolver"]
+  POLICY --> SS["session-state (always required)"]
+  POLICY --> AUI["admin-ui-foundation (required unless adminUiBase=none)"]
+  POLICY --> JIRA["jira (optional; explicit enable)"]
+  POLICY --> VOPS["video-ops (optional; explicit enable)"]
+  AUI --> AUIAG["admin-ui-agent (+ admin UI docs/assets)"]
+  SS --> SSDOC["session continuity docs/commands"]
+  JIRA --> JIRADOC["jira workflow docs/commands"]
+  VOPS --> VAG["video-download-editor-agent + video tools docs"]
+```
+
+Pack dependency rules:
+- `session-state` is always installed.
+- `admin-ui-foundation` is installed by default and skipped only when `adminUiBase=none`.
+- `jira` is opt-in via `enabledPacks` or `--enable-pack jira`.
+- `video-ops` is opt-in via `enabledPacks` or `--enable-pack video-ops`.
+- Base core agents are always installed.
 
 ## Orchestrator Start (Copy/Paste)
 Use this as a single starter command in your AI agent chat after installer setup:
@@ -67,6 +110,9 @@ Mode presets (copy/paste variants): [ORCHESTRATOR-MODES.md](./templates/shared-d
 - Admin UI foundation (optional pack):
   - Admin-UI-Agent
   - AdminCore rules + examples-first catalog workflow
+- Video operations (optional pack):
+  - Video-Download-Editor-Agent
+  - yt-dlp/ffmpeg check scripts + download/edit recipes
 
 ## Installation Flow
 1. Read `project.config.json`
@@ -123,7 +169,7 @@ If a project is new and mostly empty:
 - `-ModuleSplitThreshold / --module-split-threshold`: split threshold for module docs (default: `12`)
 - `-AnalyzeProfile / --analyze-profile`: `auto|node|python|go|java|generic` (default: `auto`)
 - `-NoSecondStepPrompt / --no-second-step-prompt`: skip stage-2 prompt after install
-- `-EnablePack / --enable-pack`: packs, comma-separated (currently: `session-state`, `jira`, `admin-ui-foundation`; `session-state` is always auto-enabled, `admin-ui-foundation` is auto-enabled unless `adminUiBase=none`)
+- `-EnablePack / --enable-pack`: packs, comma-separated (currently: `session-state`, `jira`, `admin-ui-foundation`, `video-ops`; `session-state` is always auto-enabled, `admin-ui-foundation` is auto-enabled unless `adminUiBase=none`)
 - `-AdminUiBase / --admin-ui-base`: `admincore|custom|none` (default: `admincore`)
 - `-AdminUiSource / --admin-ui-source`: optional local source path for importing admin UI examples/assets
 
@@ -137,7 +183,7 @@ In addition to required `projectName` and `projectRoot`, you can set:
 - `database`
 - `hosting`
 - `sharedTypesPath`
-- `enabledPacks` (array or comma-separated string, example: `["session-state","jira","admin-ui-foundation"]`)
+- `enabledPacks` (array or comma-separated string, example: `["session-state","jira","admin-ui-foundation","video-ops"]`)
 - `adminUiBase` (`admincore|custom|none`, default `admincore`; `none` disables default admin-ui-foundation enforcement)
 - `adminUiSourcePath` (optional local path for importing examples/assets)
 
@@ -199,6 +245,7 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state,jira
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack video-ops
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiBase admincore -AdminUiSource "D:\Design\admin-ui-source\v1.24.0"
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AdminUiBase none
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeOnly
@@ -223,6 +270,7 @@ bash ./scripts/install.sh ./project.config.json
 bash ./scripts/install.sh ./project.config.json --analyze-project
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state,jira
+bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack video-ops
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-base admincore --admin-ui-source "/mnt/d/Design/admin-ui-source/v1.24.0"
 bash ./scripts/install.sh ./project.config.json --analyze-project --admin-ui-base none
 bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-only
@@ -256,6 +304,8 @@ Admin rights may be required only if your project is located in a protected OS d
     rules/ADMIN-UI-FOUNDATION.md (when `admin-ui-foundation` pack is enabled)
     tools/ADMINCORE-UI-KIT.md (when `admin-ui-foundation` pack is enabled)
     tools/ADMINCORE-COMPONENT-CATALOG.md (auto-generated when source path is provided)
+    tools/VIDEO-DOWNLOAD-EDITING.md (when `video-ops` pack is enabled)
+    tools/check-video-tools.ps1 and tools/check-video-tools.sh (when `video-ops` pack is enabled)
     assets/admincore/css/admincore-theme.min.css
     assets/admincore/examples/** (imported from source if provided)
     project-overview.md

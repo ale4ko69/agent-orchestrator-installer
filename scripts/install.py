@@ -24,7 +24,7 @@ EXCLUDED_DIRS = {
     ".ai",
 }
 
-AVAILABLE_PACKS = {"session-state", "jira", "admin-ui-foundation"}
+AVAILABLE_PACKS = {"session-state", "jira", "admin-ui-foundation", "video-ops"}
 ALWAYS_REQUIRED_PACKS = {"session-state"}
 CONDITIONAL_REQUIRED_PACKS = {"admin-ui-foundation"}
 ADMIN_UI_BASE_OPTIONS = {"admincore", "custom", "none"}
@@ -199,6 +199,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "  Enable optional pack:\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack session-state\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack session-state,jira\n"
+            "    python scripts/install.py ./project.config.json --analyze-project --enable-pack video-ops\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-base admincore --admin-ui-source \"D:/Design/admin-ui-source/v1.24.0\"\n"
         ),
     )
@@ -231,7 +232,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--enable-pack",
         default="",
-        help="Comma-separated packs to install (supported: session-state, jira, admin-ui-foundation). session-state is always auto-enabled.",
+        help="Comma-separated packs to install (supported: session-state, jira, admin-ui-foundation, video-ops). session-state is always auto-enabled.",
     )
     parser.add_argument(
         "--admin-ui-base",
@@ -447,6 +448,19 @@ def synthesize_commands_doc(
                 "- `admin-ui examples`: use `.ai/shared-docs/tools/ADMINCORE-COMPONENT-CATALOG.md` as source of truth",
                 "- `admin-ui mode`: enforce examples-first and baseline consistency",
                 "- `admin-ui validate`: verify no ad-hoc pattern drift from baseline",
+                "",
+            ]
+        )
+
+    if "video-ops" in enabled_packs:
+        lines.extend(
+            [
+                "## Video Ops Commands",
+                "- `video tools check`: verify yt-dlp/ffmpeg availability in the current environment",
+                "- `video download`: fetch media with quality/subtitle options into a project output folder",
+                "- `video trim`: trim with yt-dlp `--download-sections` or ffmpeg `-ss/-to`",
+                "- `video convert`: remux/transcode to target format/container",
+                "- `video extract-audio`: produce mp3/m4a/wav from source video",
                 "",
             ]
         )

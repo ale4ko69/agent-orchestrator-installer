@@ -13,6 +13,7 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
 - [image-router](./docs/skills/image-router/README.md)
 - [nano-banana-pro](./docs/skills/nano-banana-pro/README.md)
 - [google-messages](./docs/skills/google-messages/README.md)
+- [video-ops](./docs/skills/video-ops/README.md)
 
 ## Поддерживаемые ОС
 - Windows (PowerShell)
@@ -33,6 +34,48 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
 Политика непрерывности сессии (по умолчанию):
 - `session-state` подключается как обязательный pack по умолчанию
 - нужен для стабильного прогресса оркестратора и восстановления после прерываний
+
+## Карта Установки И Зависимостей
+```mermaid
+flowchart TD
+  A["Старт установщика"] --> B["Чтение project.config.json"]
+  B --> C["Определение adminUiBase и enabled packs"]
+  C --> D["Применение обязательных pack-правил"]
+  D --> D1["Всегда добавить: session-state"]
+  D --> D2["Добавить admin-ui-foundation, если adminUiBase != none"]
+  D --> E["Этап 1: установка"]
+  E --> E1["Копирование core агентов (32 файла)"]
+  E --> E2["Копирование shared docs/rules"]
+  E --> E3["Подключение pack'ов (jira, session-state, admin-ui-foundation)"]
+  E --> E4["Рендер copilot-instructions + constitution + quality gates"]
+  E --> F{"Запустить Этап 2 анализа?"}
+  F -->|Да| G["Скан репозитория, markdown-доков и манифестов"]
+  G --> H["Генерация project-overview.md + analysis-summary.json (+ modules/*.md при необходимости)"]
+  F -->|Нет| I["Завершение только Этапа 1"]
+```
+
+```mermaid
+graph TD
+  I["Installer"] --> CORE["Core templates"]
+  CORE --> AGENTS["Базовый пул агентов (32)"]
+  CORE --> DOCS["Базовые docs/rules/dev"]
+  I --> POLICY["Резолвер pack-политик"]
+  POLICY --> SS["session-state (всегда обязателен)"]
+  POLICY --> AUI["admin-ui-foundation (обязателен, если adminUiBase != none)"]
+  POLICY --> JIRA["jira (опционально, только при явном включении)"]
+  POLICY --> VOPS["video-ops (опционально, только при явном включении)"]
+  AUI --> AUIAG["admin-ui-agent (+ admin UI docs/assets)"]
+  SS --> SSDOC["доки/команды непрерывности сессии"]
+  JIRA --> JIRADOC["доки/команды Jira workflow"]
+  VOPS --> VAG["video-download-editor-agent + video tool docs"]
+```
+
+Правила зависимостей pack'ов:
+- `session-state` ставится всегда.
+- `admin-ui-foundation` ставится по умолчанию и отключается только через `adminUiBase=none`.
+- `jira` включается только явно через `enabledPacks` или `--enable-pack jira`.
+- `video-ops` включается только явно через `enabledPacks` или `--enable-pack video-ops`.
+- Базовые core-агенты ставятся всегда.
 
 ## Старт Оркестратора (скопируй и вставь)
 Используй эту одну команду в чате ИИ-агента после установки:
@@ -65,6 +108,9 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
 - База админ UI (optional pack):
   - Admin-UI-Agent
   - Правила AdminCore + workflow с каталогом примеров
+- Видео workflow (optional pack):
+  - Video-Download-Editor-Agent
+  - Проверка yt-dlp/ffmpeg + готовые рецепты download/edit/convert
 
 ## Полный флоу установки
 1. Читает `project.config.json`
@@ -122,7 +168,7 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
 - `-ModuleSplitThreshold / --module-split-threshold`: порог вынесения секции в отдельный модульный файл (default: 12)
 - `-AnalyzeProfile / --analyze-profile`: профиль анализа `auto|node|python|go|java|generic` (default: `auto`)
 - `-NoSecondStepPrompt / --no-second-step-prompt`: не спрашивать про второй шаг после установки
-- `-EnablePack / --enable-pack`: подключить pack'и через запятую (сейчас: `session-state`, `jira`, `admin-ui-foundation`; `session-state` подключается всегда автоматически, `admin-ui-foundation` подключается автоматически, если не задан `adminUiBase=none`)
+- `-EnablePack / --enable-pack`: подключить pack'и через запятую (сейчас: `session-state`, `jira`, `admin-ui-foundation`, `video-ops`; `session-state` подключается всегда автоматически, `admin-ui-foundation` подключается автоматически, если не задан `adminUiBase=none`)
 - `-AdminUiBase / --admin-ui-base`: `admincore|custom|none` (по умолчанию: `admincore`)
 - `-AdminUiSource / --admin-ui-source`: опциональный путь к локальному дизайн-источнику для импорта примеров/ассетов
 
@@ -135,7 +181,7 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
 - `database`
 - `hosting`
 - `sharedTypesPath`
-- `enabledPacks` (массив или строка через запятую, пример: `["session-state","jira","admin-ui-foundation"]`)
+- `enabledPacks` (массив или строка через запятую, пример: `["session-state","jira","admin-ui-foundation","video-ops"]`)
 - `adminUiBase` (`admincore|custom|none`, по умолчанию `admincore`; `none` отключает дефолтную привязку к admin-ui-foundation)
 - `adminUiSourcePath` (опциональный локальный путь для импорта примеров/ассетов)
 
@@ -193,6 +239,7 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state,jira
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack video-ops
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiBase admincore -AdminUiSource "D:\Design\admin-ui-source\v1.24.0"
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AdminUiBase none
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeOnly
@@ -217,6 +264,7 @@ bash ./scripts/install.sh ./project.config.json
 bash ./scripts/install.sh ./project.config.json --analyze-project
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state,jira
+bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack video-ops
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-base admincore --admin-ui-source "/mnt/d/Design/admin-ui-source/v1.24.0"
 bash ./scripts/install.sh ./project.config.json --analyze-project --admin-ui-base none
 bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-only
@@ -250,6 +298,8 @@ bash ./scripts/install.sh ./project.config.json --dry-run --analyze-project
     rules/ADMIN-UI-FOUNDATION.md (при включенном pack `admin-ui-foundation`)
     tools/ADMINCORE-UI-KIT.md (при включенном pack `admin-ui-foundation`)
     tools/ADMINCORE-COMPONENT-CATALOG.md (генерируется при указании source path)
+    tools/VIDEO-DOWNLOAD-EDITING.md (при включенном pack `video-ops`)
+    tools/check-video-tools.ps1 и tools/check-video-tools.sh (при включенном pack `video-ops`)
     assets/admincore/css/admincore-theme.min.css
     assets/admincore/examples/** (импортируются из source path при наличии)
     project-overview.md
