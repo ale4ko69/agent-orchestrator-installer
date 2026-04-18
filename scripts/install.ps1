@@ -31,7 +31,7 @@ Analysis profile: auto, node, python, go, java, generic.
 Do not ask interactive stage-2 analysis prompt after install.
 
 .PARAMETER EnablePack
-Optional comma-separated packs to install (currently: session-state).
+Optional comma-separated packs to install (currently: session-state, jira).
 
 .EXAMPLE
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
@@ -47,6 +47,9 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -DryRun -AnalyzePro
 
 .EXAMPLE
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state
+
+.EXAMPLE
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state,jira
 #>
 
 param(
@@ -66,7 +69,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ExcludedDirs = @('.git','node_modules','dist','build','.venv','venv','target','out','.next','.idea','.vscode','.ai')
-$AvailablePacks = @('session-state')
+$AvailablePacks = @('session-state','jira')
 
 function Read-Config([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path)) { throw "Config not found: $Path" }
@@ -136,6 +139,15 @@ function Copy-RootMarkdown-Files([string]$SrcDir, [string]$DstDir, [bool]$IsDryR
   if (-not $ready) { return }
   Get-ChildItem -LiteralPath $SrcDir -File | Where-Object { $_.Extension -eq ".md" } | ForEach-Object {
     Copy-File-Safely -Src $_.FullName -Dst (Join-Path $DstDir $_.Name) -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+  }
+}
+
+function Copy-TreeFiles([string]$SrcRoot, [string]$DstRoot, [bool]$IsDryRun, [bool]$IsUpdateOnly, [hashtable]$Stats) {
+  if (-not (Test-Path -LiteralPath $SrcRoot)) { return }
+  Get-ChildItem -LiteralPath $SrcRoot -Recurse -File | ForEach-Object {
+    $rel = $_.FullName.Substring($SrcRoot.Length).TrimStart('\','/')
+    $dst = Join-Path $DstRoot $rel
+    Copy-File-Safely -Src $_.FullName -Dst $dst -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
   }
 }
 
@@ -519,20 +531,14 @@ if (-not $AnalyzeOnly) {
     $packRoot = Join-Path $repoRoot "templates/packs/$pack"
     if (-not (Test-Path -LiteralPath $packRoot)) { continue }
     $packAgents = Join-Path $packRoot "copilot-config/agents"
-    $packDev = Join-Path $packRoot "shared-docs/dev"
-    $packRules = Join-Path $packRoot "shared-docs/rules"
     $packShared = Join-Path $packRoot "shared-docs"
 
     if (Test-Path -LiteralPath $packAgents) {
       Copy-Dir-Files -SrcDir $packAgents -DstDir $targetAgents -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
     }
-    if (Test-Path -LiteralPath $packDev) {
-      Copy-Dir-Files -SrcDir $packDev -DstDir (Join-Path $targetDocs "dev") -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
+    if (Test-Path -LiteralPath $packShared) {
+      Copy-TreeFiles -SrcRoot $packShared -DstRoot $targetDocs -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
     }
-    if (Test-Path -LiteralPath $packRules) {
-      Copy-Dir-Files -SrcDir $packRules -DstDir (Join-Path $targetDocs "rules") -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
-    }
-    Copy-RootMarkdown-Files -SrcDir $packShared -DstDir $targetDocs -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
   }
 
   $tokens = @{

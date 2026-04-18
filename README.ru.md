@@ -100,7 +100,7 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
 - `-ModuleSplitThreshold / --module-split-threshold`: порог вынесения секции в отдельный модульный файл (default: 12)
 - `-AnalyzeProfile / --analyze-profile`: профиль анализа `auto|node|python|go|java|generic` (default: `auto`)
 - `-NoSecondStepPrompt / --no-second-step-prompt`: не спрашивать про второй шаг после установки
-- `-EnablePack / --enable-pack`: подключить optional pack'и через запятую (сейчас: `session-state`)
+- `-EnablePack / --enable-pack`: подключить optional pack'и через запятую (сейчас: `session-state`, `jira`)
 
 Дополнительные поля в `project.config.json` (опционально):
 - `authProvider`
@@ -111,7 +111,7 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
 - `database`
 - `hosting`
 - `sharedTypesPath`
-- `enabledPacks` (массив или строка через запятую, пример: `["session-state"]`)
+- `enabledPacks` (массив или строка через запятую, пример: `["session-state","jira"]`)
 
 ## Help по флагам
 - Linux/macOS/WSL:
@@ -166,6 +166,7 @@ bash "$tmp"
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state,jira
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeOnly
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -ModuleSplitThreshold 8
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeProfile node
@@ -187,6 +188,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -ConfigPath 
 bash ./scripts/install.sh ./project.config.json
 bash ./scripts/install.sh ./project.config.json --analyze-project
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state
+bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state,jira
 bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-only
 bash ./scripts/install.sh ./project.config.json --analyze-project --module-split-threshold 8
 bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-profile python
@@ -214,6 +216,7 @@ bash ./scripts/install.sh ./project.config.json --dry-run --analyze-project
     rules/QUALITY-GATES.md
     ORCHESTRATOR-MODES.md
     QUICK-COMMANDS.md (при включенном pack `session-state`)
+    JIRA-WORKFLOW.md и QUICK-COMMANDS-JIRA.md (при включенном pack `jira`)
     project-overview.md
     analysis-summary.json
     modules/*.md (опционально, если секции большие)

@@ -12,5 +12,5 @@
   "database": "TBD",
   "hosting": "TBD",
   "sharedTypesPath": "src/shared/types",
-  "enabledPacks": ["session-state"]
+  "enabledPacks": ["session-state", "jira"]
 }

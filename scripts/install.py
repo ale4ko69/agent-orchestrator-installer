@@ -24,7 +24,7 @@ EXCLUDED_DIRS = {
     ".ai",
 }
 
-AVAILABLE_PACKS = {"session-state"}
+AVAILABLE_PACKS = {"session-state", "jira"}
 
 UI_DIR_HINTS = {"ui", "frontend", "web", "client", "apps", "src"}
 SERVER_DIR_HINTS = {"server", "api", "backend", "src", "app"}
@@ -143,6 +143,15 @@ def copy_root_markdown_files(src_dir: Path, dst_dir: Path, dry_run: bool, update
             copy_file(item, dst_dir / item.name, dry_run=dry_run, update_only=update_only, stats=stats)
 
 
+def copy_tree_files(src_root: Path, dst_root: Path, dry_run: bool, update_only: bool, stats: Stats) -> None:
+    if not src_root.exists():
+        return
+    for item in sorted(src_root.rglob("*"), key=lambda p: str(p).lower()):
+        if item.is_file():
+            rel = item.relative_to(src_root)
+            copy_file(item, dst_root / rel, dry_run=dry_run, update_only=update_only, stats=stats)
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Install/update orchestrator templates and optionally analyze a project.",
@@ -166,6 +175,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "\n"
             "  Enable optional pack:\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack session-state\n"
+            "    python scripts/install.py ./project.config.json --analyze-project --enable-pack session-state,jira\n"
         ),
     )
     parser.add_argument("config_path", nargs="?", default="./project.config.json", help="Path to JSON config file.")
@@ -197,7 +207,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--enable-pack",
         default="",
-        help="Comma-separated optional packs to install (supported: session-state).",
+        help="Comma-separated optional packs to install (supported: session-state, jira).",
     )
     return parser.parse_args(argv)
 
@@ -596,15 +606,11 @@ def run_installation(
         if not pack_root.exists():
             continue
         pack_agents = pack_root / "copilot-config" / "agents"
-        pack_dev = pack_root / "shared-docs" / "dev"
-        pack_rules = pack_root / "shared-docs" / "rules"
+        pack_shared_docs = pack_root / "shared-docs"
         if pack_agents.exists():
             copy_dir_files(pack_agents, target_agents, dry_run=dry_run, update_only=update_only, stats=stats)
-        if pack_dev.exists():
-            copy_dir_files(pack_dev, target_docs / "dev", dry_run=dry_run, update_only=update_only, stats=stats)
-        if pack_rules.exists():
-            copy_dir_files(pack_rules, target_docs / "rules", dry_run=dry_run, update_only=update_only, stats=stats)
-        copy_root_markdown_files(pack_root / "shared-docs", target_docs, dry_run=dry_run, update_only=update_only, stats=stats)
+        if pack_shared_docs.exists():
+            copy_tree_files(pack_shared_docs, target_docs, dry_run=dry_run, update_only=update_only, stats=stats)
 
     template_path = repo_root / "templates" / "copilot-config" / "copilot-instructions.md"
     rendered = render_template(template_path.read_text(encoding="utf-8"), tokens)

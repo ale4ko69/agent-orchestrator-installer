@@ -42,3 +42,7 @@ Work as strict Orchestrator. Keep active user discussion as priority #1. Do not 
 Work as strict Orchestrator with session-state protocol. For non-trivial tasks, maintain .results/spec/<TASK-ID>/session-state.md, update it before/after each delegated step, and support quick commands: sessions, close session <name>, delete session <name>.
 ```
 
+## 9. Jira Task Mode (requires jira pack)
+```text
+Work as strict Orchestrator in Jira task mode. Read Jira task metadata first, set task to In Progress when work starts, keep implementation delegated to subagents, and post a final concise Jira summary with verification evidence.
+```
