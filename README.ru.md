@@ -232,7 +232,8 @@ Get-Help .\scripts\install.ps1 -Detailed
 ```powershell
 $tmp = Join-Path $env:TEMP "bootstrap-remote.ps1"
 Invoke-WebRequest https://raw.githubusercontent.com/ale4ko69/agent-orchestrator-installer/main/scripts/bootstrap-remote.ps1 -OutFile $tmp
-pwsh -NoProfile -ExecutionPolicy Bypass -File $tmp
+$ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
+& $ps -NoProfile -ExecutionPolicy Bypass -File $tmp
 ```
 
 ### Linux/macOS/WSL
@@ -249,7 +250,7 @@ bash "$tmp"
 4. Генерирует bootstrap-конфиг и запускает установщик.
 
 Можно явно передать путь проекта:
-- Windows: `pwsh -File $tmp -ProjectPath "D:\path\to\project"`
+- Windows: ``$ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }; & $ps -File $tmp -ProjectPath "D:\path\to\project"``
 - Linux/macOS/WSL: `bash "$tmp" /path/to/project`
 
 Опционально (классический локальный режим):
@@ -259,6 +260,8 @@ bash "$tmp"
 
 ## Запуск
 ### Windows
+Если PowerShell 7 (`pwsh`) не установлен, замените `pwsh` на `powershell` в командах ниже.
+
 ```powershell
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject
@@ -276,7 +279,8 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -DryRun -AnalyzePro
 
 PowerShell может быть ограничен Execution Policy. Без админ-прав используйте:
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -ConfigPath .\project.config.json -AnalyzeProject
+$ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
+& $ps -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -ConfigPath .\project.config.json -AnalyzeProject
 ```
 
 Или вообще без PowerShell (через `cmd` + Python):

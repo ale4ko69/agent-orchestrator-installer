@@ -240,7 +240,8 @@ Primary mode (no local installer git repo on your machine):
 ```powershell
 $tmp = Join-Path $env:TEMP "bootstrap-remote.ps1"
 Invoke-WebRequest https://raw.githubusercontent.com/ale4ko69/agent-orchestrator-installer/main/scripts/bootstrap-remote.ps1 -OutFile $tmp
-pwsh -NoProfile -ExecutionPolicy Bypass -File $tmp
+$ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
+& $ps -NoProfile -ExecutionPolicy Bypass -File $tmp
 ```
 
 ### Linux/macOS/WSL
@@ -257,7 +258,7 @@ Bootstrap behavior:
 4. Generates bootstrap config and runs the installer.
 
 You can also pass project path explicitly:
-- Windows: `pwsh -File $tmp -ProjectPath "D:\path\to\project"`
+- Windows: ``$ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }; & $ps -File $tmp -ProjectPath "D:\path\to\project"``
 - Linux/macOS/WSL: `bash "$tmp" /path/to/project`
 
 Optional (classic local mode, if you do want local clone of installer repo):
@@ -265,6 +266,8 @@ Optional (classic local mode, if you do want local clone of installer repo):
 
 ## Usage
 ### Windows
+If PowerShell 7 (`pwsh`) is not installed, replace `pwsh` with `powershell` in commands below.
+
 ```powershell
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject
@@ -282,7 +285,8 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -DryRun -AnalyzePro
 
 PowerShell may be restricted by execution policy. Without admin rights:
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -ConfigPath .\project.config.json -AnalyzeProject
+$ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
+& $ps -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -ConfigPath .\project.config.json -AnalyzeProject
 ```
 
 No-PowerShell fallback (`cmd` + Python):

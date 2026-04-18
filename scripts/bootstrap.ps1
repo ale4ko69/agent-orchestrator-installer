@@ -9,6 +9,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Get-PreferredPowerShell {
+  $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+  if ($pwsh) { return $pwsh.Source }
+  $ps = Get-Command powershell -ErrorAction SilentlyContinue
+  if ($ps) { return $ps.Source }
+  throw "Neither pwsh nor powershell was found in PATH."
+}
+
 function Test-ProjectFolder([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path)) { return $false }
   if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return $false }
@@ -86,5 +94,6 @@ Write-Host "Bootstrap config created: $configPath"
 Write-Host "Project: $projectName"
 Write-Host "Project root: $resolvedProject"
 
-& pwsh -NoProfile -ExecutionPolicy Bypass -File $installScript -ConfigPath $configPath
+$psExe = Get-PreferredPowerShell
+& $psExe -NoProfile -ExecutionPolicy Bypass -File $installScript -ConfigPath $configPath
 
