@@ -6,6 +6,16 @@ Cross-platform installer for agent orchestration templates and project analysis 
 
 Roadmap (planned features and deferred integrations): [ROADMAP.md](./ROADMAP.md)
 
+Skill pack specs (separate README per skill):
+- [skill-security](./docs/skills/skill-security/README.md)
+- [backup-recovery](./docs/skills/backup-recovery/README.md)
+- [google-workspace-gog](./docs/skills/google-workspace-gog/README.md)
+- [docker-essentials](./docs/skills/docker-essentials/README.md)
+- [essence-distiller](./docs/skills/essence-distiller/README.md)
+- [image-router](./docs/skills/image-router/README.md)
+- [nano-banana-pro](./docs/skills/nano-banana-pro/README.md)
+- [google-messages](./docs/skills/google-messages/README.md)
+
 ## Supported OS
 - Windows (PowerShell)
 - Linux
