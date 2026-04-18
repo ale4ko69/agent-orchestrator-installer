@@ -12,5 +12,7 @@
   "database": "TBD",
   "hosting": "TBD",
   "sharedTypesPath": "src/shared/types",
-  "enabledPacks": ["session-state", "jira"]
+  "enabledPacks": ["jira"],
+  "adminUiBase": "admincore",
+  "adminUiSourcePath": "D:/Design/admin-ui-source/v1.24.0"
 }

@@ -24,7 +24,10 @@ EXCLUDED_DIRS = {
     ".ai",
 }
 
-AVAILABLE_PACKS = {"session-state", "jira"}
+AVAILABLE_PACKS = {"session-state", "jira", "admin-ui-foundation"}
+ALWAYS_REQUIRED_PACKS = {"session-state"}
+CONDITIONAL_REQUIRED_PACKS = {"admin-ui-foundation"}
+ADMIN_UI_BASE_OPTIONS = {"admincore", "custom", "none"}
 
 UI_DIR_HINTS = {"ui", "frontend", "web", "client", "apps", "src"}
 SERVER_DIR_HINTS = {"server", "api", "backend", "src", "app"}
@@ -117,6 +120,26 @@ def write_text_file(text: str, dst: Path, dry_run: bool, update_only: bool, stat
         stats.created_files += 1
 
 
+def remove_file(path: Path, dry_run: bool, stats: Stats) -> None:
+    if not path.exists():
+        return
+    if dry_run:
+        print(f"[DRY-RUN] delete file: {path}")
+        stats.updated_files += 1
+        return
+    path.unlink()
+    stats.updated_files += 1
+
+
+def rebrand_admincore_text(text: str) -> str:
+    return text.replace("PHOENIX", "ADMINCORE").replace("Phoenix", "AdminCore").replace("phoenix", "admincore")
+
+
+def write_rebranded_text_file(src: Path, dst: Path, dry_run: bool, update_only: bool, stats: Stats) -> None:
+    text = src.read_text(encoding="utf-8", errors="ignore")
+    write_text_file(rebrand_admincore_text(text), dst, dry_run=dry_run, update_only=update_only, stats=stats)
+
+
 def copy_dir_files(src_dir: Path, dst_dir: Path, dry_run: bool, update_only: bool, stats: Stats) -> None:
     if not src_dir.exists():
         raise FileNotFoundError(f"Template directory not found: {src_dir}")
@@ -176,6 +199,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "  Enable optional pack:\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack session-state\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack session-state,jira\n"
+            "    python scripts/install.py ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-base admincore --admin-ui-source \"D:/Design/admin-ui-source/v1.24.0\"\n"
         ),
     )
     parser.add_argument("config_path", nargs="?", default="./project.config.json", help="Path to JSON config file.")
@@ -207,7 +231,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--enable-pack",
         default="",
-        help="Comma-separated optional packs to install (supported: session-state, jira).",
+        help="Comma-separated packs to install (supported: session-state, jira, admin-ui-foundation). session-state is always auto-enabled.",
+    )
+    parser.add_argument(
+        "--admin-ui-base",
+        choices=["admincore", "custom", "none"],
+        default="",
+        help="Admin UI base mode (default: from config or admincore).",
+    )
+    parser.add_argument(
+        "--admin-ui-source",
+        default="",
+        help="Optional source path for design examples/assets import (for admin-ui-foundation pack).",
     )
     return parser.parse_args(argv)
 
@@ -240,6 +275,197 @@ def parse_enabled_packs(config: dict, cli_enable_pack: str) -> list[str]:
             f"Unknown pack(s): {', '.join(unknown)}. Supported packs: {', '.join(sorted(AVAILABLE_PACKS))}"
         )
     return sorted(packs)
+
+
+def apply_default_required_packs(enabled_packs: list[str], admin_ui_base: str) -> list[str]:
+    merged = set(enabled_packs)
+    merged.update(ALWAYS_REQUIRED_PACKS)
+    if admin_ui_base != "none":
+        merged.update(CONDITIONAL_REQUIRED_PACKS)
+    return sorted(merged)
+
+
+def parse_admin_ui_base(config: dict, cli_admin_ui_base: str) -> str:
+    candidate = (cli_admin_ui_base or "").strip().lower()
+    if not candidate:
+        candidate = str(config.get("adminUiBase", "admincore")).strip().lower() or "admincore"
+    if candidate not in ADMIN_UI_BASE_OPTIONS:
+        raise ValueError(
+            f"Unknown admin UI base: {candidate}. Supported: {', '.join(sorted(ADMIN_UI_BASE_OPTIONS))}"
+        )
+    return candidate
+
+
+def install_admincore_assets(
+    target_docs: Path,
+    repo_root: Path,
+    admin_ui_base: str,
+    admin_ui_source: str,
+    dry_run: bool,
+    update_only: bool,
+    stats: Stats,
+) -> None:
+    if admin_ui_base != "admincore":
+        return
+
+    kit_root = repo_root / "templates" / "packs" / "admin-ui-foundation" / "shared-docs" / "assets" / "admincore"
+    if not kit_root.exists():
+        return
+
+    bundled_css = kit_root / "css" / "admincore-theme.min.css"
+    bundled_user_css = kit_root / "css" / "admincore-user.min.css"
+    target_css_dir = target_docs / "assets" / "admincore" / "css"
+    ensure_dir(target_css_dir, dry_run=dry_run, update_only=update_only, stats=stats)
+
+    if bundled_css.exists():
+        copy_file(bundled_css, target_css_dir / "admincore-theme.min.css", dry_run=dry_run, update_only=update_only, stats=stats)
+    if bundled_user_css.exists():
+        copy_file(bundled_user_css, target_css_dir / "admincore-user.min.css", dry_run=dry_run, update_only=update_only, stats=stats)
+
+    source_root = Path(admin_ui_source).expanduser() if admin_ui_source else None
+    if not source_root or not source_root.exists():
+        return
+
+    source_theme = source_root / "assets" / "css" / "theme.min.css"
+    source_user = source_root / "assets" / "css" / "user.min.css"
+    if source_theme.exists():
+        write_rebranded_text_file(
+            source_theme,
+            target_css_dir / "admincore-theme.min.css",
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
+    if source_user.exists():
+        write_rebranded_text_file(
+            source_user,
+            target_css_dir / "admincore-user.min.css",
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
+
+    examples_root = target_docs / "assets" / "admincore" / "examples"
+    module_roots = [
+        source_root / "modules" / "components",
+        source_root / "modules" / "forms",
+        source_root / "modules" / "tables",
+        source_root / "modules" / "echarts",
+    ]
+    copied_examples: list[str] = []
+    for root in module_roots:
+        if not root.exists():
+            continue
+        for item in sorted(root.rglob("*.html"), key=lambda p: str(p).lower()):
+            rel = item.relative_to(source_root).as_posix()
+            write_rebranded_text_file(
+                item,
+                examples_root / rel,
+                dry_run=dry_run,
+                update_only=update_only,
+                stats=stats,
+            )
+            copied_examples.append(rel)
+
+    if copied_examples:
+        catalog_lines = [
+            "# AdminCore Component Catalog",
+            "",
+            "Generated from source examples. Use these files as the canonical reference when composing admin UI.",
+            "",
+            "## Example Files",
+            *[f"- `{x}`" for x in copied_examples[:250]],
+            "",
+        ]
+        write_text_file(
+            "\n".join(catalog_lines),
+            target_docs / "tools" / "ADMINCORE-COMPONENT-CATALOG.md",
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
+
+
+def synthesize_commands_doc(
+    target_docs: Path,
+    enabled_packs: list[str],
+    admin_ui_base: str,
+    dry_run: bool,
+    update_only: bool,
+    stats: Stats,
+) -> None:
+    lines = [
+        "# Commands",
+        "",
+        "Single command reference for orchestrator usage and pack-specific command intents.",
+        "",
+        "## Orchestrator Presets",
+        "1. `strict-default`",
+        "   - Work strictly as Orchestrator; read project overview/docs first; delegate all implementation asynchronously.",
+        "2. `explore-plan-first`",
+        "   - Run Explore-Agent first, then Plan-Agent with phased plan.",
+        "3. `hotfix`",
+        "   - Keep scope minimal, avoid broad refactors, require compact risk report.",
+        "4. `frontend-quality`",
+        "   - Route through UI-UX-Agent, validate with UI-Test-Agent, check a11y/responsive/error states.",
+        "5. `growth-planning`",
+        "   - Start with tracking/measurement, then growth/channel agents, return KPI-first plan.",
+        "6. `localization-en-ru-heb`",
+        "   - Delegate to Language-Translator-Agent with meaning-preserving localization.",
+        "7. `conversation-priority`",
+        "   - Keep live user discussion priority over result dumps.",
+        "",
+    ]
+
+    if "session-state" in enabled_packs:
+        lines.extend(
+            [
+                "## Session-State Commands",
+                "- `sessions`: list active sessions",
+                "- `close session <name>`: archive session (confirmation required)",
+                "- `delete session <name>`: delete session (explicit destructive confirmation required)",
+                "",
+            ]
+        )
+
+    if "jira" in enabled_packs:
+        lines.extend(
+            [
+                "## Jira Commands",
+                "- `task <KEY>`: read issue summary/status/criteria",
+                "- `set in-progress <KEY>`: move issue to active state",
+                "- `comment <KEY>`: post final execution summary/evidence",
+                "- `attach evidence <KEY>`: attach screenshots/log references if supported",
+                "",
+            ]
+        )
+
+    if "admin-ui-foundation" in enabled_packs and admin_ui_base != "none":
+        lines.extend(
+            [
+                "## Admin UI Foundation Commands",
+                "- `admin-ui examples`: use `.ai/shared-docs/tools/ADMINCORE-COMPONENT-CATALOG.md` as source of truth",
+                "- `admin-ui mode`: enforce examples-first and baseline consistency",
+                "- `admin-ui validate`: verify no ad-hoc pattern drift from baseline",
+                "",
+            ]
+        )
+
+    write_text_file(
+        "\n".join(lines).rstrip() + "\n",
+        target_docs / "COMMANDS.md",
+        dry_run=dry_run,
+        update_only=update_only,
+        stats=stats,
+    )
+
+    legacy_files = [
+        target_docs / "ORCHESTRATOR-MODES.md",
+        target_docs / "QUICK-COMMANDS.md",
+        target_docs / "QUICK-COMMANDS-JIRA.md",
+    ]
+    for f in legacy_files:
+        remove_file(f, dry_run=dry_run, stats=stats)
 
 
 def detect_analysis_profile(data: dict) -> str:
@@ -589,6 +815,8 @@ def run_installation(
     update_only: bool,
     stats: Stats,
     enabled_packs: list[str],
+    admin_ui_base: str,
+    admin_ui_source: str,
 ) -> None:
     ensure_dir(target_copilot, dry_run=dry_run, update_only=update_only, stats=stats)
     ensure_dir(target_agents, dry_run=dry_run, update_only=update_only, stats=stats)
@@ -611,6 +839,17 @@ def run_installation(
             copy_dir_files(pack_agents, target_agents, dry_run=dry_run, update_only=update_only, stats=stats)
         if pack_shared_docs.exists():
             copy_tree_files(pack_shared_docs, target_docs, dry_run=dry_run, update_only=update_only, stats=stats)
+
+    if "admin-ui-foundation" in enabled_packs:
+        install_admincore_assets(
+            target_docs=target_docs,
+            repo_root=repo_root,
+            admin_ui_base=admin_ui_base,
+            admin_ui_source=admin_ui_source,
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
 
     template_path = repo_root / "templates" / "copilot-config" / "copilot-instructions.md"
     rendered = render_template(template_path.read_text(encoding="utf-8"), tokens)
@@ -636,6 +875,15 @@ def run_installation(
             update_only=update_only,
             stats=stats,
         )
+
+    synthesize_commands_doc(
+        target_docs=target_docs,
+        enabled_packs=enabled_packs,
+        admin_ui_base=admin_ui_base,
+        dry_run=dry_run,
+        update_only=update_only,
+        stats=stats,
+    )
 
 
 def run_analysis(
@@ -699,7 +947,9 @@ def main(argv: list[str]) -> int:
     stats = Stats()
 
     config = read_config(config_path)
+    admin_ui_base = parse_admin_ui_base(config, args.admin_ui_base)
     enabled_packs = parse_enabled_packs(config, args.enable_pack)
+    enabled_packs = apply_default_required_packs(enabled_packs, admin_ui_base)
 
     project_name = config.get("projectName", "").strip()
     project_root_raw = config.get("projectRoot", "").strip()
@@ -714,6 +964,7 @@ def main(argv: list[str]) -> int:
     database = config.get("database", "TBD").strip() or "TBD"
     hosting = config.get("hosting", "TBD").strip() or "TBD"
     shared_types_path = config.get("sharedTypesPath", "src/shared/types").strip() or "src/shared/types"
+    admin_ui_source = (args.admin_ui_source or str(config.get("adminUiSourcePath", "")).strip())
 
     if not project_name or not project_root_raw:
         raise ValueError("projectName and projectRoot are required")
@@ -732,6 +983,8 @@ def main(argv: list[str]) -> int:
     print(f"- analyze-only: {args.analyze_only}")
     print(f"- analyze-profile: {args.analyze_profile}")
     print(f"- enabled packs: {', '.join(enabled_packs) if enabled_packs else 'none'}")
+    print(f"- admin ui base: {admin_ui_base}")
+    print(f"- admin ui source: {admin_ui_source if admin_ui_source else 'none'}")
     print(f"- target codex home: {codex_home}")
 
     if not args.analyze_only:
@@ -760,6 +1013,8 @@ def main(argv: list[str]) -> int:
             update_only=args.update_only,
             stats=stats,
             enabled_packs=enabled_packs,
+            admin_ui_base=admin_ui_base,
+            admin_ui_source=admin_ui_source,
         )
 
     should_prompt_second_step = (

@@ -54,3 +54,10 @@ description: Product-focused frontend UI/UX specialist for UX architecture, comp
   3. Contrast
   4. Semantic landmarks/labels
 - Provide follow-up risk notes (if any).
+
+## Admin Foundation Compatibility
+- If `.ai/shared-docs/rules/ADMIN-UI-FOUNDATION.md` exists, follow it as a hard rule.
+- For admin panel work, use examples-first flow from:
+  1. `.ai/shared-docs/tools/ADMINCORE-COMPONENT-CATALOG.md`
+  2. `.ai/shared-docs/tools/ADMINCORE-UI-KIT.md`
+  3. `.ai/shared-docs/assets/admincore/examples/` (if present)

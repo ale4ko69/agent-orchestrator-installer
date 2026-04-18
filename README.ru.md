@@ -15,6 +15,15 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
 1. Установка инфраструктуры агентов и правил
 2. Анализ проекта и генерация обзорной документации
 
+Политика базы админки (по умолчанию):
+- `admin-ui-foundation` подключается как обязательный pack по умолчанию
+- базовый режим `adminUiBase` = `admincore`
+- явное отключение возможно только через `adminUiBase=none`
+
+Политика непрерывности сессии (по умолчанию):
+- `session-state` подключается как обязательный pack по умолчанию
+- нужен для стабильного прогресса оркестратора и восстановления после прерываний
+
 ## Старт Оркестратора (скопируй и вставь)
 Используй эту одну команду в чате ИИ-агента после установки:
 
@@ -43,6 +52,9 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
   - Paid-Media-Auditor, Search-Query-Analyst, Programmatic-Display-Buyer
 - Мультиязычная локализация:
   - Language-Translator-Agent (`EN/RU/HEB`)
+- База админ UI (optional pack):
+  - Admin-UI-Agent
+  - Правила AdminCore + workflow с каталогом примеров
 
 ## Полный флоу установки
 1. Читает `project.config.json`
@@ -100,7 +112,9 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
 - `-ModuleSplitThreshold / --module-split-threshold`: порог вынесения секции в отдельный модульный файл (default: 12)
 - `-AnalyzeProfile / --analyze-profile`: профиль анализа `auto|node|python|go|java|generic` (default: `auto`)
 - `-NoSecondStepPrompt / --no-second-step-prompt`: не спрашивать про второй шаг после установки
-- `-EnablePack / --enable-pack`: подключить optional pack'и через запятую (сейчас: `session-state`, `jira`)
+- `-EnablePack / --enable-pack`: подключить pack'и через запятую (сейчас: `session-state`, `jira`, `admin-ui-foundation`; `session-state` подключается всегда автоматически, `admin-ui-foundation` подключается автоматически, если не задан `adminUiBase=none`)
+- `-AdminUiBase / --admin-ui-base`: `admincore|custom|none` (по умолчанию: `admincore`)
+- `-AdminUiSource / --admin-ui-source`: опциональный путь к локальному дизайн-источнику для импорта примеров/ассетов
 
 Дополнительные поля в `project.config.json` (опционально):
 - `authProvider`
@@ -111,7 +125,9 @@ Roadmap: [ROADMAP.md](./ROADMAP.md)
 - `database`
 - `hosting`
 - `sharedTypesPath`
-- `enabledPacks` (массив или строка через запятую, пример: `["session-state","jira"]`)
+- `enabledPacks` (массив или строка через запятую, пример: `["session-state","jira","admin-ui-foundation"]`)
+- `adminUiBase` (`admincore|custom|none`, по умолчанию `admincore`; `none` отключает дефолтную привязку к admin-ui-foundation)
+- `adminUiSourcePath` (опциональный локальный путь для импорта примеров/ассетов)
 
 ## Help по флагам
 - Linux/macOS/WSL:
@@ -167,6 +183,8 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state,jira
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiBase admincore -AdminUiSource "D:\Design\admin-ui-source\v1.24.0"
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AdminUiBase none
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeOnly
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -ModuleSplitThreshold 8
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeProfile node
@@ -189,6 +207,8 @@ bash ./scripts/install.sh ./project.config.json
 bash ./scripts/install.sh ./project.config.json --analyze-project
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state,jira
+bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-base admincore --admin-ui-source "/mnt/d/Design/admin-ui-source/v1.24.0"
+bash ./scripts/install.sh ./project.config.json --analyze-project --admin-ui-base none
 bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-only
 bash ./scripts/install.sh ./project.config.json --analyze-project --module-split-threshold 8
 bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-profile python
@@ -217,6 +237,11 @@ bash ./scripts/install.sh ./project.config.json --dry-run --analyze-project
     ORCHESTRATOR-MODES.md
     QUICK-COMMANDS.md (при включенном pack `session-state`)
     JIRA-WORKFLOW.md и QUICK-COMMANDS-JIRA.md (при включенном pack `jira`)
+    rules/ADMIN-UI-FOUNDATION.md (при включенном pack `admin-ui-foundation`)
+    tools/ADMINCORE-UI-KIT.md (при включенном pack `admin-ui-foundation`)
+    tools/ADMINCORE-COMPONENT-CATALOG.md (генерируется при указании source path)
+    assets/admincore/css/admincore-theme.min.css
+    assets/admincore/examples/** (импортируются из source path при наличии)
     project-overview.md
     analysis-summary.json
     modules/*.md (опционально, если секции большие)

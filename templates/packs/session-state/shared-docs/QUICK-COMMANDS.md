@@ -1,10 +1,10 @@
-# Quick Commands (Session-State Pack)
+# Quick Commands (Session State)
 
 These commands are for orchestrator sessions using `session-state.md`.
 
 ## Commands
 - `sessions`
-  - Show all active task/topic sessions.
+  - Show all active work-item/topic sessions.
 - `close session <name>`
   - Archive a session safely.
 - `delete session <name>`
@@ -17,7 +17,6 @@ These commands are for orchestrator sessions using `session-state.md`.
 
 ## Suggested Output
 - Session name
-- Scope (`task`/`topic`)
+- Scope (`work-item`/`topic`)
 - Current status
 - Last update time
-
