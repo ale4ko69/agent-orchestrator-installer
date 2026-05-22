@@ -10,14 +10,22 @@ This repository uses a multi-target AI layout:
 - Run: discover -> plan -> approval -> implement -> verify.
 - Treat `.ai/shared-docs/` as the universal documentation source.
 - Treat `.codex/project-context/` as the portable Codex project pack.
+- Treat `{{KNOWLEDGE_ROOT}}/` as the durable local project knowledge base when installed.
 
 ## Read Order
 1. `.ai/shared-docs/project-overview.md`
 2. `.ai/shared-docs/rules/*.md`
-3. `.ai/shared-docs/modules/*.md`
-4. `.codex/project-context/project-overview.md` if present
-5. `.codex/project-context/rules/*.md`
-6. relevant `docs/` sections
+3. `{{KNOWLEDGE_ROOT}}/{{KNOWLEDGE_INDEX_DIR}}/README.md` for history-sensitive work, if present
+4. `{{KNOWLEDGE_ROOT}}/{{KNOWLEDGE_WIKI_DIR}}/index.md` and relevant wiki files, if present
+5. `.ai/shared-docs/modules/*.md`
+6. `.codex/project-context/project-overview.md` if present
+7. `.codex/project-context/rules/*.md`
+8. relevant `docs/` sections
+
+## Project Knowledge
+- Raw source material belongs in `{{KNOWLEDGE_ROOT}}/{{KNOWLEDGE_RAW_DIR}}/`.
+- Curated durable facts belong in `{{KNOWLEDGE_ROOT}}/{{KNOWLEDGE_WIKI_DIR}}/`.
+- Follow `.codex/project-context/dev/KNOWLEDGE-WORKFLOW.md` when the knowledge foundation is installed.
 
 ## Skills
 Prefer global reusable Codex skills from:

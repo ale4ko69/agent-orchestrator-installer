@@ -34,7 +34,7 @@ EXCLUDED_DIRS = {
     ".trash",
 }
 
-AVAILABLE_PACKS = {"session-state", "jira", "admin-ui-foundation", "video-ops"}
+AVAILABLE_PACKS = {"session-state", "jira", "admin-ui-foundation", "knowledge-foundation", "video-ops"}
 ALWAYS_REQUIRED_PACKS = {"session-state"}
 CONDITIONAL_REQUIRED_PACKS = {"admin-ui-foundation"}
 ADMIN_UI_BASE_OPTIONS = {"admincore", "custom", "none"}
@@ -156,6 +156,14 @@ def write_text_file(text: str, dst: Path, dry_run: bool, update_only: bool, stat
         stats.updated_files += 1
     else:
         stats.created_files += 1
+
+
+def write_scaffold_text_file(text: str, dst: Path, dry_run: bool, update_only: bool, stats: Stats) -> None:
+    if dst.exists():
+        print(f"[SKIP:exists] preserve existing knowledge file: {dst}")
+        stats.skipped_files += 1
+        return
+    write_text_file(text, dst, dry_run=dry_run, update_only=update_only, stats=stats)
 
 
 def managed_block_begin_marker(block_id: str) -> str:
@@ -579,6 +587,95 @@ def install_codex_templates(
         )
 
 
+def warn_if_git_ignored(project_root: Path, path: Path) -> None:
+    git = shutil.which("git")
+    if not git:
+        return
+    try:
+        result = subprocess.run(
+            [git, "-C", str(project_root), "check-ignore", "-q", str(path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        return
+    if result.returncode == 0:
+        print(f"[WARN] Knowledge root {path} is ignored by git; files are local unless ignore rules change.")
+
+
+def install_knowledge_foundation(
+    repo_root: Path,
+    project_root: Path,
+    project_codex_dir: Path,
+    knowledge: dict[str, object],
+    tokens: dict[str, str],
+    install_targets: set[str],
+    dry_run: bool,
+    update_only: bool,
+    stats: Stats,
+) -> None:
+    if not knowledge.get("enabled"):
+        return
+
+    root = knowledge["root"]
+    assert isinstance(root, Path)
+    raw_dir = str(knowledge["raw_dir"])
+    wiki_dir = str(knowledge["wiki_dir"])
+    index_dir = str(knowledge["index_dir"])
+
+    ensure_dir(root, dry_run=dry_run, update_only=update_only, stats=stats)
+    ensure_dir(root / raw_dir, dry_run=dry_run, update_only=update_only, stats=stats)
+    ensure_dir(root / wiki_dir, dry_run=dry_run, update_only=update_only, stats=stats)
+    ensure_dir(root / index_dir, dry_run=dry_run, update_only=update_only, stats=stats)
+
+    template_root = repo_root / "templates" / "knowledge"
+    mapping = [
+        (template_root / "raw" / "README.md.tpl", root / raw_dir / "README.md"),
+        (template_root / "wiki" / "index.md.tpl", root / wiki_dir / "index.md"),
+        (template_root / "wiki" / "log.md.tpl", root / wiki_dir / "log.md"),
+        (template_root / "wiki" / "decisions.md.tpl", root / wiki_dir / "decisions.md"),
+        (template_root / "wiki" / "task-history.md.tpl", root / wiki_dir / "task-history.md"),
+        (template_root / "wiki" / "open-questions.md.tpl", root / wiki_dir / "open-questions.md"),
+        (template_root / "wiki" / "architecture-notes.md.tpl", root / wiki_dir / "architecture-notes.md"),
+        (template_root / "wiki" / "agent-lessons.md.tpl", root / wiki_dir / "agent-lessons.md"),
+        (template_root / "index" / "README.md.tpl", root / index_dir / "README.md"),
+    ]
+
+    knowledge_tokens = {
+        **tokens,
+        "KNOWLEDGE_ROOT": root.as_posix(),
+        "KNOWLEDGE_RAW_DIR": raw_dir,
+        "KNOWLEDGE_WIKI_DIR": wiki_dir,
+        "KNOWLEDGE_INDEX_DIR": index_dir,
+    }
+    for src, dst in mapping:
+        if src.exists():
+            write_scaffold_text_file(
+                render_template(src.read_text(encoding="utf-8"), knowledge_tokens),
+                dst,
+                dry_run=dry_run,
+                update_only=update_only,
+                stats=stats,
+            )
+
+    if "codex" in install_targets:
+        workflow_tpl = repo_root / "templates" / "_render" / "KNOWLEDGE-WORKFLOW.md.tpl"
+        workflow_dst = project_codex_dir / "project-context" / "dev" / "KNOWLEDGE-WORKFLOW.md"
+        if workflow_tpl.exists():
+            write_text_file(
+                render_template(workflow_tpl.read_text(encoding="utf-8"), knowledge_tokens),
+                workflow_dst,
+                dry_run=dry_run,
+                update_only=update_only,
+                stats=stats,
+            )
+
+    warn_if_git_ignored(project_root, root)
+    if knowledge.get("enable_daemon"):
+        print("[WARN] Knowledge daemon is not installed in P0; installed the file-based knowledge foundation only.")
+
+
 def sync_analysis_into_codex_project(
     target_docs: Path,
     project_codex_dir: Path,
@@ -699,6 +796,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack session-state\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack session-state,jira\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack video-ops\n"
+            "    python scripts/install.py ./project.config.json --install-packs knowledge-foundation --knowledge-root .ai/knowledge\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-mode canonical --admin-ui-canonical-dir \"D:/path/to/canonical-output\"\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-base admincore --admin-ui-source \"D:/Design/admin-ui-source/v1.24.0\"\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-source-url \"https://example.com/admin-ui-v1.24.0.zip\" --admin-ui-sha256 \"<sha256>\"\n"
@@ -743,7 +841,27 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--enable-pack",
         default="",
-        help="Comma-separated packs to install (supported: session-state, jira, admin-ui-foundation, video-ops). session-state is always auto-enabled.",
+        help="Comma-separated packs to install (supported: session-state, jira, admin-ui-foundation, knowledge-foundation, video-ops). session-state is always auto-enabled.",
+    )
+    parser.add_argument(
+        "--install-packs",
+        default="",
+        help="Alias for --enable-pack. Comma-separated installer packs to add.",
+    )
+    parser.add_argument(
+        "--enable-knowledge",
+        action="store_true",
+        help="Enable the file-based knowledge foundation pack.",
+    )
+    parser.add_argument(
+        "--enable-knowledge-daemon",
+        action="store_true",
+        help="Record intent for the future knowledge daemon. P0 installs files only.",
+    )
+    parser.add_argument(
+        "--knowledge-root",
+        default="",
+        help="Knowledge root path. Relative paths resolve from projectRoot. Default: .ai/knowledge.",
     )
     parser.add_argument(
         "--admin-ui-base",
@@ -800,14 +918,25 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def parse_enabled_packs(config: dict, cli_enable_pack: str) -> list[str]:
+def parse_enabled_packs(
+    config: dict,
+    cli_enable_pack: str,
+    cli_install_packs: str,
+    enable_knowledge: bool,
+) -> list[str]:
     packs: set[str] = set()
 
-    if cli_enable_pack:
-        for raw in cli_enable_pack.split(","):
+    cli_packs = ",".join([x for x in (cli_enable_pack, cli_install_packs) if x])
+    if cli_packs:
+        for raw in cli_packs.split(","):
             p = raw.strip().lower()
             if p:
                 packs.add(p)
+    if enable_knowledge:
+        packs.add("knowledge-foundation")
+    knowledge_cfg = config.get("knowledge", {})
+    if isinstance(knowledge_cfg, dict) and _config_bool(knowledge_cfg, "enabled", False):
+        packs.add("knowledge-foundation")
 
     config_packs = config.get("enabledPacks", [])
     if isinstance(config_packs, str):
@@ -828,6 +957,56 @@ def parse_enabled_packs(config: dict, cli_enable_pack: str) -> list[str]:
             f"Unknown pack(s): {', '.join(unknown)}. Supported packs: {', '.join(sorted(AVAILABLE_PACKS))}"
         )
     return sorted(packs)
+
+
+def _config_bool(config: dict, key: str, default: bool) -> bool:
+    value = config.get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _resolve_project_path(project_root: Path, raw_path: str) -> Path:
+    path = Path(raw_path).expanduser()
+    if not path.is_absolute():
+        path = project_root / path
+    return path.resolve()
+
+
+def resolve_knowledge_config(
+    config: dict,
+    project_root: Path,
+    enabled_packs: list[str],
+    cli_enable_knowledge: bool,
+    cli_enable_daemon: bool,
+    cli_root: str,
+) -> dict[str, object]:
+    knowledge_cfg = config.get("knowledge", {})
+    if not isinstance(knowledge_cfg, dict):
+        knowledge_cfg = {}
+
+    pack_enabled = "knowledge-foundation" in enabled_packs
+    enabled = pack_enabled or cli_enable_knowledge or _config_bool(knowledge_cfg, "enabled", False)
+    root_raw = cli_root or str(knowledge_cfg.get("root", ".ai/knowledge")).strip() or ".ai/knowledge"
+    raw_dir = str(knowledge_cfg.get("rawDir", "raw")).strip() or "raw"
+    wiki_dir = str(knowledge_cfg.get("wikiDir", "wiki")).strip() or "wiki"
+    index_dir = str(knowledge_cfg.get("indexDir", "index")).strip() or "index"
+    enable_daemon = cli_enable_daemon or _config_bool(knowledge_cfg, "enableDaemon", False)
+
+    return {
+        "enabled": enabled,
+        "root": _resolve_project_path(project_root, root_raw),
+        "root_raw": root_raw,
+        "raw_dir": raw_dir,
+        "wiki_dir": wiki_dir,
+        "index_dir": index_dir,
+        "update_on_install": _config_bool(knowledge_cfg, "updateOnInstall", True),
+        "enable_daemon": enable_daemon,
+        "citation_mode": str(knowledge_cfg.get("citationMode", "source-file")).strip() or "source-file",
+        "index_provider": str(knowledge_cfg.get("indexProvider", "sqlite-fts5")).strip() or "sqlite-fts5",
+    }
 
 
 def apply_default_required_packs(enabled_packs: list[str], admin_ui_base: str) -> list[str]:
@@ -1072,6 +1251,17 @@ def synthesize_commands_doc(
                 "- `video trim`: trim with yt-dlp `--download-sections` or ffmpeg `-ss/-to`",
                 "- `video convert`: remux/transcode to target format/container",
                 "- `video extract-audio`: produce mp3/m4a/wav from source video",
+                "",
+            ]
+        )
+
+    if "knowledge-foundation" in enabled_packs:
+        lines.extend(
+            [
+                "## Knowledge Foundation Commands",
+                "- `knowledge read`: read the knowledge index and relevant wiki files before history-sensitive work",
+                "- `knowledge update`: add durable facts, decisions, lessons, or task history after meaningful work",
+                "- `knowledge raw`: place unprocessed source material in the raw inbox only when useful later",
                 "",
             ]
         )
@@ -1588,7 +1778,7 @@ def main(argv: list[str]) -> int:
     config = read_config(config_path)
     admin_ui_base = parse_admin_ui_base(config, args.admin_ui_base)
     admin_ui_mode = parse_admin_ui_mode(config, args.admin_ui_mode)
-    enabled_packs = parse_enabled_packs(config, args.enable_pack)
+    enabled_packs = parse_enabled_packs(config, args.enable_pack, args.install_packs, args.enable_knowledge)
     enabled_packs = apply_default_required_packs(enabled_packs, admin_ui_base)
 
     project_name = config.get("projectName", "").strip()
@@ -1634,6 +1824,14 @@ def main(argv: list[str]) -> int:
             project_root=project_root,
             dry_run=args.dry_run,
         )
+    knowledge = resolve_knowledge_config(
+        config=config,
+        project_root=project_root.expanduser().resolve(),
+        enabled_packs=enabled_packs,
+        cli_enable_knowledge=args.enable_knowledge,
+        cli_enable_daemon=args.enable_knowledge_daemon,
+        cli_root=args.knowledge_root,
+    )
 
     target_copilot = codex_home / "copilot-config"
     target_agents = target_copilot / "agents"
@@ -1658,6 +1856,7 @@ def main(argv: list[str]) -> int:
     print(f"- project codex dir: {project_codex_dir}")
     print(f"- install codex cli: {install_codex_cli_flag}")
     print(f"- install targets: {', '.join(sorted(install_targets))}")
+    print(f"- knowledge root: {knowledge['root'] if knowledge.get('enabled') else 'disabled'}")
 
     install_codex_cli(install_codex_cli_flag, args.dry_run)
 
@@ -1679,6 +1878,10 @@ def main(argv: list[str]) -> int:
             "DATABASE": database,
             "HOSTING": hosting,
             "SHARED_TYPES_PATH": shared_types_path,
+            "KNOWLEDGE_ROOT": knowledge["root"].as_posix() if isinstance(knowledge["root"], Path) else str(knowledge["root"]),
+            "KNOWLEDGE_RAW_DIR": str(knowledge["raw_dir"]),
+            "KNOWLEDGE_WIKI_DIR": str(knowledge["wiki_dir"]),
+            "KNOWLEDGE_INDEX_DIR": str(knowledge["index_dir"]),
         }
         if "copilot" in install_targets:
             run_installation(
@@ -1696,6 +1899,17 @@ def main(argv: list[str]) -> int:
                 admin_ui_canonical_dir=admin_ui_canonical_dir,
                 admin_ui_source=admin_ui_source,
             )
+        install_knowledge_foundation(
+            repo_root=repo_root,
+            project_root=project_root,
+            project_codex_dir=project_codex_dir,
+            knowledge=knowledge,
+            tokens=tokens,
+            install_targets=install_targets,
+            dry_run=args.dry_run,
+            update_only=args.update_only,
+            stats=stats,
+        )
         install_codex_templates(
             repo_root=repo_root,
             project_root=project_root,

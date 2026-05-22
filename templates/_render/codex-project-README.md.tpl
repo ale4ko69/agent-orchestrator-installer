@@ -11,3 +11,4 @@ Use with:
 - repo entry point: `AGENTS.md`
 - global reusable skills: `{{USER_CODEX_HOME}}/skills/projects-*`
 - project-specific context: `.codex/project-context/`
+- knowledge workflow: `.codex/project-context/dev/KNOWLEDGE-WORKFLOW.md` when `knowledge-foundation` is installed

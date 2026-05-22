@@ -99,6 +99,7 @@ bash "$tmp"
 Частые дополнительные поля:
 
 - `enabledPacks`: массив или строка через запятую.
+- `knowledge`: настройки локальной wiki знаний проекта; корень по умолчанию `.ai/knowledge`.
 - `adminUiBase`: `admincore`, `custom` или `none`; по умолчанию `admincore`.
 - `adminUiMode`: `canonical` или `legacy`; по умолчанию `canonical` в Python/shell точках входа.
 - `adminUiCanonicalDir`: папка с `component-examples.json` и `css-report.json`; Python/shell точки входа используют её для canonical-импорта материалов Admin UI.
@@ -122,6 +123,7 @@ CLI-флаги целей переопределяют цели из конфи�
 - `session-state` включается всегда.
 - `admin-ui-foundation` включается по умолчанию, если `adminUiBase` не равен `none`.
 - `jira` включается только явно.
+- `knowledge-foundation` включается только явно и ставит локальную файловую wiki вместе с папкой для raw-материалов.
 - `video-ops` включается только явно.
 
 Включить дополнительные наборы:
@@ -129,7 +131,20 @@ CLI-флаги целей переопределяют цели из конфи�
 ```powershell
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack jira,video-ops
 py -3 ./scripts/install.py ./project.config.json --enable-pack jira,video-ops
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -InstallPacks knowledge-foundation -KnowledgeRoot .ai/knowledge
+py -3 ./scripts/install.py ./project.config.json --install-packs knowledge-foundation --knowledge-root .ai/knowledge
 ```
+
+## Локальная Wiki Знаний
+
+`knowledge-foundation` — это локальная wiki знаний проекта, а не GitHub Wiki. Она создаёт внутри проекта корень вроде `.ai/knowledge/`:
+
+- `raw/` — для сырых заметок, выгрузок, handoff-материалов и источников.
+- `wiki/` — для проверенных фактов, решений, истории задач, открытых вопросов, архитектурных заметок и уроков агентов.
+- `index/` — для карты файлов и порядка чтения.
+- `.codex/project-context/dev/KNOWLEDGE-WORKFLOW.md` — для Codex, если установлен target `codex`.
+
+P0-реализация файловая: без daemon и без SQLite/FTS индекса. Уже существующие knowledge-файлы инсталлер сохраняет и не перетирает.
 
 ## Режимы
 

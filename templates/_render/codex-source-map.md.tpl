@@ -5,6 +5,7 @@ This project-local Codex pack is intended to align these layers:
 - `.ai/shared-docs/` as the universal documentation source
 - `AGENTS.md` as the Codex repo entry point
 - `CLAUDE.md` as the Claude Code repo entry point
+- `{{KNOWLEDGE_ROOT}}/{{KNOWLEDGE_WIKI_DIR}}/` as durable local project memory when installed
 - `{{USER_CODEX_HOME}}/skills/projects-*` as reusable global skills
 - `{{PROJECT_CODEX_DIR}}/agents/*.toml` as thin repo-local agent wrappers
 

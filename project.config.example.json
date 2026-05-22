@@ -17,6 +17,17 @@
   "hosting": "TBD",
   "sharedTypesPath": "src/shared/types",
   "enabledPacks": ["jira"],
+  "knowledge": {
+    "enabled": false,
+    "root": ".ai/knowledge",
+    "rawDir": "raw",
+    "wikiDir": "wiki",
+    "indexDir": "index",
+    "updateOnInstall": true,
+    "enableDaemon": false,
+    "citationMode": "source-file",
+    "indexProvider": "sqlite-fts5"
+  },
   "adminUiBase": "admincore",
   "adminUiMode": "canonical",
   "adminUiCanonicalDir": "D:/path/to/canonical-output",

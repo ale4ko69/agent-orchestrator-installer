@@ -35,8 +35,17 @@ Analysis profile: auto, node, python, go, java, generic.
 Do not ask interactive stage-2 analysis prompt after install.
 
 .PARAMETER EnablePack
-Optional comma-separated packs to install (currently: session-state, jira, admin-ui-foundation, video-ops).
+Optional comma-separated packs to install (currently: session-state, jira, admin-ui-foundation, knowledge-foundation, video-ops).
 Note: session-state is always auto-enabled; admin-ui-foundation is auto-enabled unless AdminUiBase is set to none.
+
+.PARAMETER InstallPacks
+Alias-style comma-separated pack list. Adds to EnablePack/config enabledPacks.
+
+.PARAMETER EnableKnowledge
+Enable the file-based knowledge foundation pack.
+
+.PARAMETER KnowledgeRoot
+Knowledge root path. Relative paths resolve from projectRoot. Default: .ai/knowledge.
 
 .PARAMETER AdminUiBase
 Admin UI base policy for admin-ui-foundation pack: admincore, custom, or none.
@@ -103,6 +112,10 @@ param(
   [string]$AnalyzeProfile = "auto",
   [switch]$NoSecondStepPrompt,
   [string]$EnablePack = "",
+  [string]$InstallPacks = "",
+  [switch]$EnableKnowledge,
+  [switch]$EnableKnowledgeDaemon,
+  [string]$KnowledgeRoot = "",
   [ValidateSet("admincore","custom","none")]
   [string]$AdminUiBase = "",
   [string]$AdminUiSource = "",
@@ -117,7 +130,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ExcludedDirs = @('.git','node_modules','dist','build','.venv','venv','target','out','.next','.idea','.vscode','.ai','.codex','.claude','.tmp','.trash')
-$AvailablePacks = @('session-state','jira','admin-ui-foundation','video-ops')
+$AvailablePacks = @('session-state','jira','admin-ui-foundation','knowledge-foundation','video-ops')
 $AlwaysRequiredPacks = @('session-state')
 $ConditionalRequiredPacks = @('admin-ui-foundation')
 $AvailableInstallTargets = @('copilot','claude','codex')
@@ -190,6 +203,15 @@ function Write-ManagedText([string]$Text, [string]$Dst, [bool]$IsDryRun, [bool]$
   if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
   Set-Content -LiteralPath $Dst -Encoding UTF8 -Value $Text
   if ($exists) { $Stats.updated_files++ } else { $Stats.created_files++ }
+}
+
+function Write-ScaffoldText([string]$Text, [string]$Dst, [bool]$IsDryRun, [bool]$IsUpdateOnly, [hashtable]$Stats) {
+  if (Test-Path -LiteralPath $Dst) {
+    Write-Host "[SKIP:exists] preserve existing knowledge file: $Dst"
+    $Stats.skipped_files++
+    return
+  }
+  Write-ManagedText -Text $Text -Dst $Dst -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
 }
 
 function Get-ManagedBlockBeginMarker([string]$BlockId) {
@@ -465,6 +487,79 @@ function Install-CodexTemplates(
   }
 }
 
+function Test-GitIgnored([string]$ProjectRoot, [string]$Path) {
+  $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+  if (-not $gitCmd) { return $false }
+  & $gitCmd.Source -C $ProjectRoot check-ignore -q $Path 2>$null
+  return ($LASTEXITCODE -eq 0)
+}
+
+function Install-KnowledgeFoundation(
+  [string]$RepoRoot,
+  [string]$ProjectRoot,
+  [string]$ProjectCodexDir,
+  [hashtable]$Knowledge,
+  [hashtable]$Tokens,
+  [string[]]$InstallTargets,
+  [bool]$IsDryRun,
+  [bool]$IsUpdateOnly,
+  [hashtable]$Stats
+) {
+  if (-not [bool]$Knowledge.enabled) { return }
+
+  $root = [string]$Knowledge.root
+  $rawDir = [string]$Knowledge.rawDir
+  $wikiDir = [string]$Knowledge.wikiDir
+  $indexDir = [string]$Knowledge.indexDir
+
+  Ensure-Dir -Path $root -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
+  Ensure-Dir -Path (Join-Path $root $rawDir) -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
+  Ensure-Dir -Path (Join-Path $root $wikiDir) -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
+  Ensure-Dir -Path (Join-Path $root $indexDir) -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
+
+  $knowledgeTokens = $Tokens.Clone()
+  $knowledgeTokens["KNOWLEDGE_ROOT"] = ($root -replace "\\", "/")
+  $knowledgeTokens["KNOWLEDGE_RAW_DIR"] = $rawDir
+  $knowledgeTokens["KNOWLEDGE_WIKI_DIR"] = $wikiDir
+  $knowledgeTokens["KNOWLEDGE_INDEX_DIR"] = $indexDir
+
+  $templateRoot = Join-Path $RepoRoot "templates/knowledge"
+  $mapping = @(
+    @{ src = "raw/README.md.tpl"; dst = (Join-Path (Join-Path $root $rawDir) "README.md") },
+    @{ src = "wiki/index.md.tpl"; dst = (Join-Path (Join-Path $root $wikiDir) "index.md") },
+    @{ src = "wiki/log.md.tpl"; dst = (Join-Path (Join-Path $root $wikiDir) "log.md") },
+    @{ src = "wiki/decisions.md.tpl"; dst = (Join-Path (Join-Path $root $wikiDir) "decisions.md") },
+    @{ src = "wiki/task-history.md.tpl"; dst = (Join-Path (Join-Path $root $wikiDir) "task-history.md") },
+    @{ src = "wiki/open-questions.md.tpl"; dst = (Join-Path (Join-Path $root $wikiDir) "open-questions.md") },
+    @{ src = "wiki/architecture-notes.md.tpl"; dst = (Join-Path (Join-Path $root $wikiDir) "architecture-notes.md") },
+    @{ src = "wiki/agent-lessons.md.tpl"; dst = (Join-Path (Join-Path $root $wikiDir) "agent-lessons.md") },
+    @{ src = "index/README.md.tpl"; dst = (Join-Path (Join-Path $root $indexDir) "README.md") }
+  )
+
+  foreach ($item in $mapping) {
+    $src = Join-Path $templateRoot $item.src
+    if (Test-Path -LiteralPath $src) {
+      $rendered = Apply-Tokens -Text (Get-Content -LiteralPath $src -Raw) -Tokens $knowledgeTokens
+      Write-ScaffoldText -Text $rendered -Dst $item.dst -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+    }
+  }
+
+  if ($InstallTargets -contains "codex") {
+    $workflowTemplate = Join-Path $RepoRoot "templates/_render/KNOWLEDGE-WORKFLOW.md.tpl"
+    if (Test-Path -LiteralPath $workflowTemplate) {
+      $workflow = Apply-Tokens -Text (Get-Content -LiteralPath $workflowTemplate -Raw) -Tokens $knowledgeTokens
+      Write-ManagedText -Text $workflow -Dst (Join-Path $ProjectCodexDir "project-context/dev/KNOWLEDGE-WORKFLOW.md") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+    }
+  }
+
+  if (Test-GitIgnored -ProjectRoot $ProjectRoot -Path $root) {
+    Write-Host "[WARN] Knowledge root $root is ignored by git; files are local unless ignore rules change."
+  }
+  if ([bool]$Knowledge.enableDaemon) {
+    Write-Host "[WARN] Knowledge daemon is not installed in P0; installed the file-based knowledge foundation only."
+  }
+}
+
 function Sync-AnalysisIntoCodexProject(
   [string]$TargetDocs,
   [string]$ProjectCodexDir,
@@ -489,14 +584,19 @@ function Sync-AnalysisIntoCodexProject(
   }
 }
 
-function Parse-EnabledPacks([object]$Config, [string]$CliPacks, [string[]]$SupportedPacks) {
+function Parse-EnabledPacks([object]$Config, [string]$CliPacks, [string]$CliInstallPacks, [bool]$EnableKnowledgePack, [string[]]$SupportedPacks) {
   $packs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
-  if (-not [string]::IsNullOrWhiteSpace($CliPacks)) {
-    foreach ($p in ($CliPacks -split ",")) {
+  $combinedCliPacks = @($CliPacks, $CliInstallPacks) -join ","
+  if (-not [string]::IsNullOrWhiteSpace($combinedCliPacks)) {
+    foreach ($p in ($combinedCliPacks -split ",")) {
       $x = $p.Trim().ToLower()
       if ($x) { [void]$packs.Add($x) }
     }
+  }
+  if ($EnableKnowledgePack) { [void]$packs.Add("knowledge-foundation") }
+  if ($Config.PSObject.Properties.Name -contains "knowledge" -and (Get-ConfigBool -ConfigObject $Config.knowledge -PropertyName "enabled" -DefaultValue $false)) {
+    [void]$packs.Add("knowledge-foundation")
   }
 
   if ($Config.PSObject.Properties.Name -contains "enabledPacks") {
@@ -521,6 +621,45 @@ function Parse-EnabledPacks([object]$Config, [string]$CliPacks, [string[]]$Suppo
   }
 
   return @($packs | Sort-Object)
+}
+
+function Get-ConfigBool([object]$ConfigObject, [string]$PropertyName, [bool]$DefaultValue) {
+  if ($null -eq $ConfigObject -or -not ($ConfigObject.PSObject.Properties.Name -contains $PropertyName)) { return $DefaultValue }
+  $value = $ConfigObject.$PropertyName
+  if ($value -is [bool]) { return [bool]$value }
+  if ($value -is [string]) { return @("1","true","yes","on") -contains $value.Trim().ToLower() }
+  return [bool]$value
+}
+
+function Resolve-ProjectPath([string]$ProjectRoot, [string]$RawPath) {
+  $expanded = [Environment]::ExpandEnvironmentVariables($RawPath)
+  if ([System.IO.Path]::IsPathRooted($expanded)) { return [System.IO.Path]::GetFullPath($expanded) }
+  return [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot $expanded))
+}
+
+function Resolve-KnowledgeConfig([object]$Config, [string]$ProjectRoot, [string[]]$EnabledPacks, [bool]$CliEnableKnowledge, [bool]$CliEnableDaemon, [string]$CliRoot) {
+  $knowledgeCfg = $null
+  if ($Config.PSObject.Properties.Name -contains "knowledge") { $knowledgeCfg = $Config.knowledge }
+
+  $packEnabled = $EnabledPacks -contains "knowledge-foundation"
+  $enabledFromConfig = Get-ConfigBool -ConfigObject $knowledgeCfg -PropertyName "enabled" -DefaultValue $false
+  $rootRaw = if (-not [string]::IsNullOrWhiteSpace($CliRoot)) { $CliRoot } elseif ($null -ne $knowledgeCfg -and $knowledgeCfg.PSObject.Properties.Name -contains "root" -and -not [string]::IsNullOrWhiteSpace([string]$knowledgeCfg.root)) { [string]$knowledgeCfg.root } else { ".ai/knowledge" }
+  $rawDir = if ($null -ne $knowledgeCfg -and $knowledgeCfg.PSObject.Properties.Name -contains "rawDir" -and -not [string]::IsNullOrWhiteSpace([string]$knowledgeCfg.rawDir)) { [string]$knowledgeCfg.rawDir } else { "raw" }
+  $wikiDir = if ($null -ne $knowledgeCfg -and $knowledgeCfg.PSObject.Properties.Name -contains "wikiDir" -and -not [string]::IsNullOrWhiteSpace([string]$knowledgeCfg.wikiDir)) { [string]$knowledgeCfg.wikiDir } else { "wiki" }
+  $indexDir = if ($null -ne $knowledgeCfg -and $knowledgeCfg.PSObject.Properties.Name -contains "indexDir" -and -not [string]::IsNullOrWhiteSpace([string]$knowledgeCfg.indexDir)) { [string]$knowledgeCfg.indexDir } else { "index" }
+  $enableDaemon = $CliEnableDaemon -or (Get-ConfigBool -ConfigObject $knowledgeCfg -PropertyName "enableDaemon" -DefaultValue $false)
+
+  return @{
+    enabled = [bool]($packEnabled -or $CliEnableKnowledge -or $enabledFromConfig)
+    root = Resolve-ProjectPath -ProjectRoot $ProjectRoot -RawPath $rootRaw
+    rawDir = $rawDir
+    wikiDir = $wikiDir
+    indexDir = $indexDir
+    updateOnInstall = Get-ConfigBool -ConfigObject $knowledgeCfg -PropertyName "updateOnInstall" -DefaultValue $true
+    enableDaemon = [bool]$enableDaemon
+    citationMode = if ($null -ne $knowledgeCfg -and $knowledgeCfg.PSObject.Properties.Name -contains "citationMode" -and -not [string]::IsNullOrWhiteSpace([string]$knowledgeCfg.citationMode)) { [string]$knowledgeCfg.citationMode } else { "source-file" }
+    indexProvider = if ($null -ne $knowledgeCfg -and $knowledgeCfg.PSObject.Properties.Name -contains "indexProvider" -and -not [string]::IsNullOrWhiteSpace([string]$knowledgeCfg.indexProvider)) { [string]$knowledgeCfg.indexProvider } else { "sqlite-fts5" }
+  }
 }
 
 function Parse-AdminUiBase([object]$Config, [string]$CliAdminUiBase) {
@@ -1061,7 +1200,7 @@ $installCodexCliFlag = if ($InstallCodexCli) { $true } elseif ($config.PSObject.
 $effectiveUserCodexHome = if (-not [string]::IsNullOrWhiteSpace($UserCodexHome)) { Resolve-UserCodexHome -RawValue $UserCodexHome } elseif ($config.PSObject.Properties.Name -contains "userCodexHome" -and -not [string]::IsNullOrWhiteSpace([string]$config.userCodexHome)) { Resolve-UserCodexHome -RawValue ([string]$config.userCodexHome) } else { Resolve-UserCodexHome -RawValue "" }
 $projectCodexDir = if ($config.PSObject.Properties.Name -contains "projectCodexDir" -and -not [string]::IsNullOrWhiteSpace([string]$config.projectCodexDir)) { [string]$config.projectCodexDir } else { Join-Path $projectRoot ".codex" }
 $installTargetsEffective = Parse-InstallTargets -Config $config -CliTargets $InstallTargets -SupportedTargets $AvailableInstallTargets
-$enabledPacks = Parse-EnabledPacks -Config $config -CliPacks $EnablePack -SupportedPacks $AvailablePacks
+$enabledPacks = Parse-EnabledPacks -Config $config -CliPacks $EnablePack -CliInstallPacks $InstallPacks -EnableKnowledgePack ([bool]$EnableKnowledge) -SupportedPacks $AvailablePacks
 $effectiveAdminUiBase = Parse-AdminUiBase -Config $config -CliAdminUiBase $AdminUiBase
 $effectiveAdminUiSource = if (-not [string]::IsNullOrWhiteSpace($AdminUiSource)) { $AdminUiSource } elseif ($config.PSObject.Properties.Name -contains "adminUiSourcePath") { [string]$config.adminUiSourcePath } else { "" }
 $effectiveAdminUiSourceUrl = if (-not [string]::IsNullOrWhiteSpace($AdminUiSourceUrl)) { $AdminUiSourceUrl } elseif ($config.PSObject.Properties.Name -contains "adminUiSourceUrl") { [string]$config.adminUiSourceUrl } else { "" }
@@ -1076,6 +1215,7 @@ if ([string]::IsNullOrWhiteSpace($projectName) -or [string]::IsNullOrWhiteSpace(
 $targetCopilot = Join-Path $codexHome "copilot-config"
 $targetAgents = Join-Path $targetCopilot "agents"
 $targetDocs = Join-Path $codexHome "shared-docs"
+$knowledge = Resolve-KnowledgeConfig -Config $config -ProjectRoot $projectRoot -EnabledPacks $enabledPacks -CliEnableKnowledge ([bool]$EnableKnowledge) -CliEnableDaemon ([bool]$EnableKnowledgeDaemon) -CliRoot $KnowledgeRoot
 $resolvedAdminUiSource = $null
 if (($enabledPacks -contains "admin-ui-foundation") -and $effectiveAdminUiBase -eq "admincore") {
   $resolvedAdminUiSource = Resolve-AdminUiSource -SourcePathRaw $effectiveAdminUiSource -SourceUrlRaw $effectiveAdminUiSourceUrl -SourceSha256 $effectiveAdminUiSha256 -CacheDirRaw $effectiveAdminUiCacheDir -ProjectRoot $projectRoot -IsDryRun $noWriteMode
@@ -1100,6 +1240,7 @@ Write-Host "- user codex home: $effectiveUserCodexHome"
 Write-Host "- project codex dir: $projectCodexDir"
 Write-Host "- install codex cli: $installCodexCliFlag"
 Write-Host "- install targets: $($installTargetsEffective -join ', ')"
+Write-Host "- knowledge root: $(if ([bool]$knowledge.enabled) { $knowledge.root } else { 'disabled' })"
 
 Install-CodexCliForUser -ShouldInstall $installCodexCliFlag -IsDryRun $noWriteMode
 
@@ -1152,6 +1293,10 @@ if (-not $AnalyzeOnly) {
     "DATABASE" = $database
     "HOSTING" = $hosting
     "SHARED_TYPES_PATH" = $sharedTypesPath
+    "KNOWLEDGE_ROOT" = ([string]$knowledge.root -replace "\\", "/")
+    "KNOWLEDGE_RAW_DIR" = [string]$knowledge.rawDir
+    "KNOWLEDGE_WIKI_DIR" = [string]$knowledge.wikiDir
+    "KNOWLEDGE_INDEX_DIR" = [string]$knowledge.indexDir
   }
 
   if ($installTargetsEffective -contains "copilot") {
@@ -1174,6 +1319,8 @@ if (-not $AnalyzeOnly) {
       Write-ManagedText -Text $qualityRendered -Dst (Join-Path $targetDocs "rules/QUALITY-GATES.md") -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
     }
   }
+
+  Install-KnowledgeFoundation -RepoRoot $repoRoot -ProjectRoot $projectRoot -ProjectCodexDir $projectCodexDir -Knowledge $knowledge -Tokens $tokens -InstallTargets $installTargetsEffective -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
 
   Install-CodexTemplates -RepoRoot $repoRoot -ProjectRoot $projectRoot -UserCodexHomePath $effectiveUserCodexHome -ProjectCodexDir $projectCodexDir -Tokens $tokens -InstallTargets $installTargetsEffective -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
 }

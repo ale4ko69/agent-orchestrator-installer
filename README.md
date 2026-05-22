@@ -99,6 +99,7 @@ Minimal config:
 Common optional fields:
 
 - `enabledPacks`: array or comma-separated string.
+- `knowledge`: optional settings for the local project knowledge wiki; default root is `.ai/knowledge`.
 - `adminUiBase`: `admincore`, `custom`, or `none`; default is `admincore`.
 - `adminUiMode`: `canonical` or `legacy`; default is `canonical` in Python/shell entrypoints.
 - `adminUiCanonicalDir`: directory containing `component-examples.json` and `css-report.json`; Python/shell entrypoints use it for canonical Admin UI imports.
@@ -122,6 +123,7 @@ Pack policy:
 - `session-state` is always enabled.
 - `admin-ui-foundation` is enabled by default unless `adminUiBase=none`.
 - `jira` is opt-in.
+- `knowledge-foundation` is opt-in and installs a local file-based wiki plus raw knowledge inbox.
 - `video-ops` is opt-in.
 
 Enable optional packs:
@@ -129,7 +131,20 @@ Enable optional packs:
 ```powershell
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack jira,video-ops
 py -3 ./scripts/install.py ./project.config.json --enable-pack jira,video-ops
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -InstallPacks knowledge-foundation -KnowledgeRoot .ai/knowledge
+py -3 ./scripts/install.py ./project.config.json --install-packs knowledge-foundation --knowledge-root .ai/knowledge
 ```
+
+## Knowledge Foundation
+
+`knowledge-foundation` is a local project wiki, not GitHub Wiki. It creates a durable knowledge root such as `.ai/knowledge/` with:
+
+- `raw/` for unprocessed notes and source material.
+- `wiki/` for curated facts, decisions, task history, open questions, architecture notes, and agent lessons.
+- `index/` for the read order and file map.
+- `.codex/project-context/dev/KNOWLEDGE-WORKFLOW.md` when the Codex target is installed.
+
+P0 is file-only. It does not start a daemon and does not create a SQLite/FTS index yet. Existing knowledge files are preserved instead of overwritten.
 
 ## Modes
 
