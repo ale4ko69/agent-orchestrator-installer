@@ -1,283 +1,68 @@
 # Agent Orchestrator Installer
 
-Установщик набора субагентов, общих правил оркестрации и multi-target AI-структуры для любого проекта.
+Английская версия: [README.md](./README.md)
 
-Multi-target выход:
-- `Copilot` -> `.ai/copilot-config/...` и `.ai/shared-docs/...`
-- `Claude Code` -> `CLAUDE.md`
-- `Codex` -> `AGENTS.md`, `<repo>/.codex/...`, `~/.codex/skills/...`
+`agent-orchestrator-installer` устанавливает в существующий проект готовую инфраструктуру для работы с ИИ-агентами. Он может сгенерировать инструкции для Copilot, входные файлы для Claude Code, проектные и глобальные материалы для Codex, общие правила проекта, дополнительные пакеты и обзорный анализ кодовой базы.
 
-Важно:
-- `.claude/` runtime worktrees, lock/state-файлы и служебный мусор не считаются шаблонными ассетами
-- глобальные Codex skills должны жить в user-scope Codex home текущего пользователя
+Установщик рассчитан на повторяемые обновления: цели, переданные через CLI, переопределяют цели из конфигурации; `diff` работает как строгий режим без записи; корневые instruction-файлы обновляются через управляемые блоки; файлы, убираемые миграцией, сначала попадают в `.trash/`, а не удаляются сразу.
 
-Roadmap: [ROADMAP.md](./ROADMAP.md)
+## Поддерживаемые Платформы
 
-Спецификации skill-паков (отдельный README на каждый skill):
-- [skill-security](./docs/skills/skill-security/README.md)
-- [backup-recovery](./docs/skills/backup-recovery/README.md)
-- [google-workspace-gog](./docs/skills/google-workspace-gog/README.md)
-- [docker-essentials](./docs/skills/docker-essentials/README.md)
-- [essence-distiller](./docs/skills/essence-distiller/README.md)
-- [image-router](./docs/skills/image-router/README.md)
-- [nano-banana-pro](./docs/skills/nano-banana-pro/README.md)
-- [google-messages](./docs/skills/google-messages/README.md)
-- [video-ops](./docs/skills/video-ops/README.md)
+- Windows PowerShell (`pwsh` предпочтителен, Windows PowerShell тоже поддерживается)
+- Linux, macOS и WSL через `scripts/install.sh` / Python
+- запасной запуск через Python: `scripts/install.py` или `scripts/install.cmd`
 
-## Поддерживаемые ОС
-- Windows (PowerShell)
-- Linux
-- macOS
-- WSL
+## Что Устанавливается
 
-## Что это делает
-Скрипт работает в трёх слоях:
-1. Установка инфраструктуры агентов и правил
-2. Анализ проекта и генерация обзорной документации
-3. Установка portable Codex assets и, при желании, user-scope Codex CLI
+Цели установки можно включать вместе или по отдельности:
 
-## Install Targets
-Можно ставить всё сразу или только нужные target-слои:
 - `copilot`
+  - `.ai/copilot-config/copilot-instructions.md`
+  - `.ai/copilot-config/agents/*.agent.md`
+  - `.ai/shared-docs/**`
 - `claude`
+  - `CLAUDE.md`
 - `codex`
+  - `AGENTS.md`
+  - `<project>/.codex/agents/*.toml`
+  - `<project>/.codex/project-context/**`
+  - `<user-codex-home>/skills/projects-*`
 
-Поведение по умолчанию:
-- если `installTargets` не задан, installer ставит все три target-слоя
-- bootstrap-скрипты теперь генерируют конфиг сразу на все три target-а
+Если `installTargets` не задан и через CLI не передано переопределение, устанавливаются все три цели.
 
-Конфиг и флаги:
-- `installTargets` в `project.config.json`
-- `-InstallTargets copilot,claude,codex` / `--install-targets copilot,claude,codex`
-- `codexHome` задаёт project-local Codex output (по умолчанию `<projectRoot>/.ai`)
-- `installCodexCli: true` или `--install-codex-cli`
-- `userCodexHome` или `--user-codex-home`
-- Codex CLI и user-scope assets используют `CODEX_HOME` или `~/.codex`, если `userCodexHome` не задан.
+## Быстрый Старт
 
-Политика базы админки (по умолчанию):
-- `admin-ui-foundation` подключается как обязательный pack по умолчанию
-- базовый режим `adminUiBase` = `admincore`
-- режим источника `adminUiMode` = `canonical`
-- явное отключение возможно только через `adminUiBase=none`
+Из локальной копии этого installer:
 
-Политика непрерывности сессии (по умолчанию):
-- `session-state` подключается как обязательный pack по умолчанию
-- нужен для стабильного прогресса оркестратора и восстановления после прерываний
-
-## Карта Установки И Зависимостей
-```mermaid
-flowchart TD
-  A["Старт установщика"] --> B["Чтение project.config.json"]
-  B --> C["Определение adminUiBase и enabled packs"]
-  C --> D["Применение обязательных pack-правил"]
-  D --> D1["Всегда добавить: session-state"]
-  D --> D2["Добавить admin-ui-foundation, если adminUiBase != none"]
-  D --> E["Этап 1: установка"]
-  E --> E1["Копирование core агентов (32 файла)"]
-  E --> E2["Копирование shared docs/rules"]
-  E --> E3["Подключение pack'ов (jira, session-state, admin-ui-foundation)"]
-  E --> E4["Рендер copilot-instructions + constitution + quality gates"]
-  E --> F{"Запустить Этап 2 анализа?"}
-  F -->|Да| G["Скан репозитория, markdown-доков и манифестов"]
-  G --> H["Генерация project-overview.md + analysis-summary.json (+ modules/*.md при необходимости)"]
-  F -->|Нет| I["Завершение только Этапа 1"]
-```
-
-```mermaid
-graph TD
-  I["Installer"] --> CORE["Core templates"]
-  CORE --> AGENTS["Базовый пул агентов (32)"]
-  CORE --> DOCS["Базовые docs/rules/dev"]
-  I --> POLICY["Резолвер pack-политик"]
-  POLICY --> SS["session-state (всегда обязателен)"]
-  POLICY --> AUI["admin-ui-foundation (обязателен, если adminUiBase != none)"]
-  POLICY --> JIRA["jira (опционально, только при явном включении)"]
-  POLICY --> VOPS["video-ops (опционально, только при явном включении)"]
-  AUI --> AUIAG["admin-ui-agent (+ admin UI docs/assets)"]
-  SS --> SSDOC["доки/команды непрерывности сессии"]
-  JIRA --> JIRADOC["доки/команды Jira workflow"]
-  VOPS --> VAG["video-download-editor-agent + video tool docs"]
-```
-
-Правила зависимостей pack'ов:
-- `session-state` ставится всегда.
-- `admin-ui-foundation` ставится по умолчанию и отключается только через `adminUiBase=none`.
-- `jira` включается только явно через `enabledPacks` или `--enable-pack jira`.
-- `video-ops` включается только явно через `enabledPacks` или `--enable-pack video-ops`.
-- Базовые core-агенты ставятся всегда.
-
-## Старт Оркестратора (скопируй и вставь)
-Используй эту одну команду в чате ИИ-агента после установки:
-
-```text
-Работай строго как Orchestrator для этого проекта. Сначала прочитай .ai/shared-docs/project-overview.md и все *.md в проекте. Все задачи реализации делегируй сабагентам асинхронно (run_in_background=true), оставайся доступным в диалоге, давай короткие статус-апдейты и сразу передавай результаты каждого сабагента. Никогда не пиши код напрямую как orchestrator. Соблюдай git-политику: всегда task-branch -> PR -> merge в main, прямой push в main запрещен.
-```
-
-Рекомендуемый контекст запуска:
-- Открывай ИИ-агент терминал в корне целевого проекта.
-- Убедись, что есть `project-overview.md` (если нет, запусти stage-2 анализ).
-- Режим оркестратора должен быть строгим: только планирование/делегирование/верификация.
-
-Пресеты режимов запуска (готовые варианты команд): [ORCHESTRATOR-MODES.md](./templates/shared-docs/ORCHESTRATOR-MODES.md)
-
-## Какие наборы агентов входят сейчас
-- Core-оркестрация разработки:
-  - Orchestrator, SC, UI-UX, UI-Test, CR, DOMAIN, VALIDATION, DOC
-- Продуктовый контур (опциональный этап):
-  - Product-Manager, Sprint-Prioritizer, Feedback-Synthesizer
-- Growth + Marketing:
-  - Growth-Hacker, Content-Creator, SEO, Social-Media
-  - AI-Citation, Agentic-Search-Optimizer
-  - App-Store, Video-Optimization, LinkedIn, Twitter/X, Reddit
-- Paid media:
-  - Tracking-Measurement, PPC, Paid-Social, Ad-Creative
-  - Paid-Media-Auditor, Search-Query-Analyst, Programmatic-Display-Buyer
-- Мультиязычная локализация:
-  - Language-Translator-Agent (`EN/RU/HEB`)
-- База админ UI (optional pack):
-  - Admin-UI-Agent
-  - Правила AdminCore + workflow с каталогом примеров
-- Видео workflow (optional pack):
-  - Video-Download-Editor-Agent
-  - Проверка yt-dlp/ffmpeg + готовые рецепты download/edit/convert
-  - Только для custom media-проектов (opt-in)
-
-## Полный флоу установки
-1. Читает `project.config.json`
-2. Проверяет `projectName` и `projectRoot`
-3. Определяет `codexHome` (`<projectRoot>/.ai`, если не задан)
-4. Копирует шаблоны:
-   - `copilot-config/agents/*`
-   - `shared-docs/dev/*`
-   - `shared-docs/rules/*`
-5. Рендерит `copilot-config/copilot-instructions.md` с токенами проекта
-6. Рендерит policy-документы:
-   - `shared-docs/rules/CONSTITUTION.md`
-   - `shared-docs/rules/QUALITY-GATES.md`
-7. Сразу спрашивает пользователя про второй шаг:
-   - запустить обзорный анализ проекта прямо сейчас
-   - при ответе `y/yes` сразу выполняет анализ и генерирует `project-overview.md`
-
-## Полный флоу анализа
-При флаге анализа скрипт:
-1. Сканирует структуру репозитория (исключая `.git`, `node_modules`, `dist`, `build`, `.venv`, `venv`, `target`, `out`, `.next`, `.idea`, `.vscode`, `.ai`, `.codex`, `.claude`, `.tmp`, `.trash`)
-2. Ищет манифесты/entry points (`package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `Dockerfile`, `docker-compose*`, `Makefile`, CI workflows)
-3. Ищет папки и файлы `.md` по всему проекту как источники существующей документации
-4. Выделяет модульные зоны:
-   - Docs Intake
-   - UI
-   - Server/API
-   - Services/Workers
-   - Infra/CI
-5. Пытается извлечь команды запуска/сборки/тестов
-6. Формирует риски, unknowns и suggested agent profile
-7. Генерирует один главный файл:
-   - `shared-docs/project-overview.md`
-8. Генерирует машинно-читаемый summary:
-   - `shared-docs/analysis-summary.json`
-9. Если секция слишком большая, выносит детали в:
-   - `shared-docs/modules/docs.md`
-   - `shared-docs/modules/ui.md`
-   - `shared-docs/modules/server.md`
-   - `shared-docs/modules/services.md`
-   - `shared-docs/modules/infra.md`
-   и оставляет ссылки в главном файле
-
-## Новый проект (пустой репозиторий)
-Если проект новый и кода почти нет:
-- `project-overview.md` всё равно создаётся
-- добавляется блок `New Project Bootstrap Notes`
-- unknowns и риски помечаются явно
-- после первого scaffold-коммита можно перезапустить анализ
-
-## Режимы Источника Admin UI
-По умолчанию: `canonical`
-- источник истины: `component-examples.json` + `css-report.json`
-- копируются в `.ai/shared-docs/tools/admincore-canonical/` при передаче `--admin-ui-canonical-dir`
-
-Legacy-режим: `legacy`
-- включает старый ZIP/source import workflow
-- оставлен для обратной совместимости
-
-## ZIP Workflow Для Admin UI Source (Legacy)
-Для удобства source админки можно передавать как `.zip` архив, а не только как локальную папку.
-
-Порядок выбора источника:
-1. `--admin-ui-source` (локальная папка)
-2. `--admin-ui-source-url` (http/https URL или локальный путь к `.zip`)
-
-Что делает архивный режим:
-- скачивает архив в кэш (или использует локальный zip)
-- проверяет checksum при передаче `--admin-ui-sha256`
-- распаковывает архив в кэш
-- автоопределяет корень source по `assets/css/theme.min.css`
-- импортирует и санитизирует примеры/ассеты под AdminCore
-
-Готовый production-пример:
-- URL: `https://github.com/ale4ko69/agent-orchestrator-installer/releases/download/admin-ui-v1.24.0-sanitized/admin-ui-v1.24.0-sanitized.zip`
-- SHA256: `036238da45f8b9a9220cd40c7e54cf54d4210082628f25c47a2b8aaaf2cc1f4c`
-
-## Режимы и флаги
-- `-DryRun / --dry-run`: показать изменения без записи файлов
-- `-Diff / --diff` (также `--diff-mode` в Python): no-write preview/diff режим
-- `-UpdateOnly / --update-only`: обновлять только существующие файлы
-- `-AnalyzeProject / --analyze-project`: запустить анализ и генерацию обзора
-- `-AnalyzeOnly / --analyze-only`: только анализ, без установки шаблонов
-- `-ModuleSplitThreshold / --module-split-threshold`: порог вынесения секции в отдельный модульный файл (default: 12)
-- `-AnalyzeProfile / --analyze-profile`: профиль анализа `auto|node|python|go|java|generic` (default: `auto`)
-- `-NoSecondStepPrompt / --no-second-step-prompt`: не спрашивать про второй шаг после установки
-- `-EnablePack / --enable-pack`: подключить pack'и через запятую (сейчас: `session-state`, `jira`, `admin-ui-foundation`, `video-ops`; `session-state` подключается всегда автоматически, `admin-ui-foundation` подключается автоматически, если не задан `adminUiBase=none`)
-- `-AdminUiBase / --admin-ui-base`: `admincore|custom|none` (по умолчанию: `admincore`)
-- `--admin-ui-mode`: `canonical|legacy` (по умолчанию: `canonical`)
-- `--admin-ui-canonical-dir`: папка с `component-examples.json` и `css-report.json`
-- `-AdminUiSource / --admin-ui-source`: опциональный путь к локальному дизайн-источнику для импорта примеров/ассетов
-- `--admin-ui-source-url`: опциональный URL/путь к `.zip` архиву со snapshot админки
-- `--admin-ui-sha256`: опциональная проверка checksum архива
-- `--admin-ui-cache-dir`: опциональная папка кэша для скачанного/распакованного архива
-
-Дополнительные поля в `project.config.json` (опционально):
-- `authProvider`
-- `complianceRequirements`
-- `a11yLevel`
-- `language`
-- `framework`
-- `database`
-- `hosting`
-- `sharedTypesPath`
-- `enabledPacks` (массив или строка через запятую, пример: `["session-state","jira","admin-ui-foundation","video-ops"]`)
-- `adminUiBase` (`admincore|custom|none`, по умолчанию `admincore`; `none` отключает дефолтную привязку к admin-ui-foundation)
-- `adminUiMode` (`canonical|legacy`, по умолчанию `canonical`)
-- `adminUiCanonicalDir` (папка с `component-examples.json` и `css-report.json`)
-- `adminUiSourcePath` (опциональный локальный путь для импорта примеров/ассетов)
-- `adminUiSourceUrl` (опциональный URL/путь к `.zip` архиву)
-- `adminUiSourceSha256` (опциональная checksum архива)
-- `adminUiCacheDir` (опциональная папка кэша)
-
-## Безопасность генерируемых файлов
-- Корневые `AGENTS.md` и `CLAUDE.md` обновляются через managed Markdown blocks; локальные unmanaged файлы пропускаются как conflict.
-- `.ai/agent-orchestrator.lock.json` записывает эффективный config, targets, packs и версию installer после write-запусков.
-- Заменённые или удалённые installer-owned файлы переносятся в `<projectRoot>/.trash/<date>/`, а не удаляются напрямую.
-- `.tmp/` используется для bootstrap/cache и исключается из анализа вместе с generated AI/runtime папками.
-
-## Help по флагам
-- Linux/macOS/WSL:
-```bash
-python3 scripts/install.py --help
-```
-- Windows PowerShell:
 ```powershell
-Get-Help .\scripts\install.ps1 -Detailed
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject
 ```
 
-## Установка по URL репозитория (рекомендуемый bootstrap)
+Через Python:
 
-Основной режим (без локального git-клона installer-репозитория):
-- скачивается входной bootstrap-скрипт
-- архив installer скачивается в `<project>/.tmp/agent-installer`
-- установка запускается из распакованной копии
-- отдельный локальный git-репозиторий installer не создаётся
+```powershell
+py -3 ./scripts/install.py ./project.config.json --analyze-project
+```
+
+Предпросмотр без записи:
+
+```powershell
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -Diff -InstallTargets codex
+py -3 ./scripts/install.py ./project.config.json --diff --install-targets codex
+```
+
+Обновить только Codex-слой:
+
+```powershell
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -InstallTargets codex -UpdateOnly -NoSecondStepPrompt
+```
+
+## Remote Bootstrap
+
+Используй этот режим, если не хочешь клонировать репозиторий установщика внутрь целевого проекта.
 
 ### Windows
+
 ```powershell
 $tmp = Join-Path $env:TEMP "bootstrap-remote.ps1"
 Invoke-WebRequest https://raw.githubusercontent.com/ale4ko69/agent-orchestrator-installer/main/scripts/bootstrap-remote.ps1 -OutFile $tmp
@@ -286,108 +71,229 @@ $ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "pow
 ```
 
 ### Linux/macOS/WSL
+
 ```bash
 tmp="/tmp/bootstrap-remote.sh"
 curl -fsSL https://raw.githubusercontent.com/ale4ko69/agent-orchestrator-installer/main/scripts/bootstrap-remote.sh -o "$tmp"
 bash "$tmp"
 ```
 
-Поведение bootstrap:
-1. Проверяет, похожа ли текущая папка на корень проекта.
-2. Спрашивает подтверждение использовать текущую папку.
-3. Если пользователь отказался (или папка не проектная), просит путь к проекту.
-4. Генерирует bootstrap-конфиг и запускает установщик.
+Удалённый bootstrap хранит кэш установщика в `<project>/.tmp/agent-installer`. Папки runtime и cache исключаются из анализа проекта и не считаются источниками переиспользуемых шаблонов.
 
-Можно явно передать путь проекта:
-- Windows: ``$ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }; & $ps -File $tmp -ProjectPath "D:\path\to\project"``
-- Linux/macOS/WSL: `bash "$tmp" /path/to/project`
+## Конфигурация
 
-Опционально (классический локальный режим):
-- можно клонировать installer-репозиторий и запускать `scripts/bootstrap.ps1` / `scripts/bootstrap.sh`
+Минимальный config:
 
-Интеграции `Gastown/Beads` сейчас отложены и запланированы как будущие opt-in профили (см. roadmap).
+```json
+{
+  "projectName": "My Project",
+  "projectRoot": "D:/path/to/project",
+  "codexHome": "D:/path/to/project/.ai",
+  "projectCodexDir": "D:/path/to/project/.codex",
+  "userCodexHome": "C:/Users/<user>/.codex",
+  "installTargets": ["copilot", "claude", "codex"],
+  "installCodexCli": false
+}
+```
 
-## Запуск
-### Windows
-Если PowerShell 7 (`pwsh`) не установлен, замените `pwsh` на `powershell` в командах ниже.
+Частые дополнительные поля:
+
+- `enabledPacks`: массив или строка через запятую.
+- `adminUiBase`: `admincore`, `custom` или `none`; по умолчанию `admincore`.
+- `adminUiMode`: `canonical` или `legacy`; по умолчанию `canonical` в Python/shell точках входа.
+- `adminUiCanonicalDir`: папка с `component-examples.json` и `css-report.json`; Python/shell точки входа используют её для canonical-импорта материалов Admin UI.
+- `adminUiSourcePath`, `adminUiSourceUrl`, `adminUiSourceSha256`, `adminUiCacheDir`: legacy-импорт источников для Admin UI.
+- `authProvider`, `complianceRequirements`, `a11yLevel`, `language`, `framework`, `database`, `hosting`, `sharedTypesPath`: значения, которые подставляются в сгенерированную документацию.
+
+Смотри [project.config.example.json](./project.config.example.json).
+
+## Цели Установки И Наборы
+
+Выбор targets:
+
+- Config: `"installTargets": ["copilot", "claude", "codex"]`
+- PowerShell: `-InstallTargets copilot,claude,codex`
+- Python: `--install-targets copilot,claude,codex`
+
+CLI-флаги целей переопределяют цели из конфигурации. Они не объединяются со значениями из config.
+
+Правила наборов:
+
+- `session-state` включается всегда.
+- `admin-ui-foundation` включается по умолчанию, если `adminUiBase` не равен `none`.
+- `jira` включается только явно.
+- `video-ops` включается только явно.
+
+Включить дополнительные наборы:
+
+```powershell
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack jira,video-ops
+py -3 ./scripts/install.py ./project.config.json --enable-pack jira,video-ops
+```
+
+## Режимы
+
+- `-DryRun` / `--dry-run`: показывает запланированные действия установщика. Если нужен строгий запуск без записи и без создания bootstrap config, используй `-Diff` / `--diff`.
+- `-Diff` / `--diff` / `--diff-mode`: строгий режим предпросмотра без записи; также отказывается создавать отсутствующую bootstrap-конфигурацию.
+- `-UpdateOnly` / `--update-only`: обновляет только существующие файлы; отсутствующие файлы и папки пропускаются.
+- `-AnalyzeProject` / `--analyze-project`: устанавливает templates и запускает анализ проекта.
+- `-AnalyzeOnly` / `--analyze-only`: запускает только анализ, без установки templates.
+- `-NoSecondStepPrompt` / `--no-second-step-prompt`: пропускает интерактивный вопрос второго этапа.
+
+## Анализ Проекта
+
+При включённом анализе установщик сканирует целевой проект и пишет:
+
+- `.ai/shared-docs/project-overview.md`
+- `.ai/shared-docs/analysis-summary.json`
+- `.ai/shared-docs/modules/*.md`, если секции превышают threshold
+
+Из сканирования исключаются сгенерированные, runtime- и cache-папки:
+
+```text
+.git, node_modules, dist, build, .venv, venv, target, out, .next,
+.idea, .vscode, .ai, .codex, .claude, .tmp, .trash
+```
+
+Анализ ищет манифесты и точки входа: `package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`, Docker-файлы, Makefiles и CI workflows. Существующая Markdown-документация тоже используется как входные данные.
+
+## Безопасность Сгенерированных Файлов
+
+Установщик аккуратно относится к содержимому, которым владеет пользователь:
+
+- `AGENTS.md` и `CLAUDE.md` обновляются через управляемые Markdown-блоки:
+  - `<!-- BEGIN MANAGED: agent-orchestrator-installer root-agents -->`
+  - `<!-- BEGIN MANAGED: agent-orchestrator-installer root-claude -->`
+- Текст вне управляемых блоков сохраняется.
+- Existing unmanaged `AGENTS.md` / `CLAUDE.md` пропускаются как conflicts, а не перезаписываются.
+- `.ai/agent-orchestrator.lock.json` пишется после реальных запусков с записью и фиксирует фактические цели, наборы, режим и метаданные установщика.
+- `-DryRun` и `-Diff` никогда не пишут lockfile.
+- `-UpdateOnly` обновляет lockfile только если он уже существует.
+- Python migration cleanup переносит legacy files в `<project>/.trash/<date>/...`; явная очистка trash выполняется отдельной maintenance-командой.
+- `.trash/` игнорируется git. Для очистки старого trash используй `scripts/cleanup-trash.ps1` явно.
+
+Очистка trash:
+
+```powershell
+pwsh ./scripts/cleanup-trash.ps1 -DryRun
+pwsh ./scripts/cleanup-trash.ps1 -RetentionDays 7
+```
+
+## Пакет Для Админ-Интерфейсов
+
+`admin-ui-foundation` — это дополнительный набор для проектов, в которых есть админка, панель управления или внутренний операторский интерфейс. Это не админка для самого installer, а проектный пакет правил и материалов для разработки рабочих интерфейсов: панелей управления, таблиц, фильтров, форм, карточек сущностей, списков пользователей, настроек и внутренних экранов.
+
+AdminCore UI в этом репозитории означает базовую систему подходов для админ-интерфейсов: плотная и предсказуемая компоновка, упор на повторяемые рабочие сценарии, аккуратные таблицы и формы, понятная навигация, состояния загрузки/ошибок/пустых данных и единые правила для компонентов. Такой пакет полезен, когда AI-агентам нужно не “придумать красивую страницу”, а стабильно продолжать существующую админку или быстро собрать новую без хаоса в UX.
+
+Что добавляет `admin-ui-foundation`:
+
+- отдельного агента `admin-ui-agent` для задач по админ-интерфейсам;
+- правила AdminCore UI для панелей управления и внутренних операторских экранов;
+- документацию по компонентам, каталогам и примерам;
+- материалы для canonical-режима, если переданы `component-examples.json` и `css-report.json`;
+- ограничения и подсказки, чтобы агенты не делали маркетинговый лендинг вместо рабочей админки.
+
+Включай этот набор, если в проекте есть или планируется админ-панель, CRM, панель управления или внутренний инструмент. Отключай через `adminUiBase=none`, если проекту не нужны материалы для админ-интерфейсов.
+
+Поведение Admin UI по умолчанию:
+
+- `admin-ui-foundation` включён, если `adminUiBase` не равен `none`.
+- `adminUiMode=canonical` по умолчанию.
+- В canonical-режиме установщик читает `component-examples.json` и `css-report.json` из `adminUiCanonicalDir` и копирует их в `.ai/shared-docs/tools/admincore-canonical/`.
+
+Legacy-режим поддерживает импорт из папки с исходниками или из ZIP-архива:
+
+- `-AdminUiSource` / `--admin-ui-source`
+- `--admin-ui-source-url`
+- `--admin-ui-sha256`
+- `--admin-ui-cache-dir`
+
+Используй `adminUiBase=none` или `-AdminUiBase none`, если проекту не нужны материалы для админ-интерфейса.
+
+## Структура Сгенерированных Файлов
+
+Типичный результат установки всех целей:
+
+```text
+<project>/
+  AGENTS.md
+  CLAUDE.md
+  .codex/
+    README.md
+    agents/*.toml
+    project-context/**
+  .ai/
+    agent-orchestrator.lock.json
+    copilot-config/
+      copilot-instructions.md
+      agents/*.agent.md
+    shared-docs/
+      dev/*.md
+      rules/*.md
+      rules/CONSTITUTION.md
+      rules/QUALITY-GATES.md
+      project-overview.md
+      analysis-summary.json
+      modules/*.md
+      tools/**
+      assets/**
+  .tmp/
+    agent-installer/**       # удалённый bootstrap/cache
+  .trash/
+    YYYY-MM-DD/**            # карантин для заменённых/убранных файлов
+```
+
+Глобальные skills для Codex копируются в `<user-codex-home>/skills/projects-*`.
+
+## Команды
+
+PowerShell:
 
 ```powershell
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject
-pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state
-pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state,jira
-pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack video-ops
-pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation --admin-ui-mode canonical --admin-ui-canonical-dir "D:\path\to\canonical-output"
-pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiBase admincore -AdminUiSource "D:\Design\admin-ui-source\v1.24.0"
-pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiSourceUrl "https://example.com/admin-ui-v1.24.0.zip" -AdminUiSha256 "<sha256>"
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -InstallTargets codex -UpdateOnly -NoSecondStepPrompt
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -Diff -InstallTargets copilot
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AdminUiBase none
-pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeOnly
-pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -ModuleSplitThreshold 8
-pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AnalyzeProfile node
-pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -DryRun -AnalyzeProject
 ```
 
-PowerShell может быть ограничен Execution Policy. Без админ-прав используйте:
+Python:
+
 ```powershell
-$ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
-& $ps -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -ConfigPath .\project.config.json -AnalyzeProject
+py -3 ./scripts/install.py ./project.config.json
+py -3 ./scripts/install.py ./project.config.json --analyze-project
+py -3 ./scripts/install.py ./project.config.json --install-targets codex --update-only --no-second-step-prompt
+py -3 ./scripts/install.py ./project.config.json --diff --install-targets copilot
+py -3 ./scripts/install.py ./project.config.json --analyze-project --admin-ui-base none
 ```
 
-Или вообще без PowerShell (через `cmd` + Python):
+Shell wrapper:
+
+```bash
+bash ./scripts/install.sh ./project.config.json --analyze-project
+```
+
+CMD wrapper:
+
 ```bat
 .\scripts\install.cmd .\project.config.json --analyze-project
 ```
 
-### Linux/macOS/WSL
-```bash
-bash ./scripts/install.sh ./project.config.json
-bash ./scripts/install.sh ./project.config.json --analyze-project
-bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state
-bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state,jira
-bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack video-ops
-bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-mode canonical --admin-ui-canonical-dir "/path/to/canonical-output"
-bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-base admincore --admin-ui-source "/mnt/d/Design/admin-ui-source/v1.24.0"
-bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-source-url "https://example.com/admin-ui-v1.24.0.zip" --admin-ui-sha256 "<sha256>"
-bash ./scripts/install.sh ./project.config.json --analyze-project --admin-ui-base none
-bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-only
-bash ./scripts/install.sh ./project.config.json --analyze-project --module-split-threshold 8
-bash ./scripts/install.sh ./project.config.json --analyze-project --analyze-profile python
-bash ./scripts/install.sh ./project.config.json --dry-run --analyze-project
+## Справка
+
+```powershell
+Get-Help .\scripts\install.ps1 -Detailed
+py -3 .\scripts\install.py --help
 ```
 
-## Нужны ли права администратора?
-Обычно не нужны. Скрипты:
-- читают файлы проекта
-- создают/обновляют файлы только внутри целевого `projectRoot/.ai` (или `codexHome`)
-- не ставят системные пакеты и не пишут в системные директории
+## Стартовый Prompt Для Orchestrator
 
-Админ-доступ может понадобиться только если сам проект лежит в защищённой папке ОС.
+Вставь это в AI-агент для кода после установки проектного набора:
 
-## Что создаётся в целевом проекте
 ```text
-<project>/.ai/
-  copilot-config/
-    copilot-instructions.md
-    agents/*.agent.md
-  shared-docs/
-    dev/*.md
-    rules/*.md
-    rules/CONSTITUTION.md
-    rules/QUALITY-GATES.md
-    ORCHESTRATOR-MODES.md
-    QUICK-COMMANDS.md (при включенном pack `session-state`)
-    JIRA-WORKFLOW.md и QUICK-COMMANDS-JIRA.md (при включенном pack `jira`)
-    rules/ADMIN-UI-FOUNDATION.md (при включенном pack `admin-ui-foundation`)
-    tools/ADMINCORE-CANONICAL-MODE.md (при включенном pack `admin-ui-foundation`)
-    tools/admincore-canonical/component-examples.json (canonical mode, если передан путь)
-    tools/admincore-canonical/css-report.json (canonical mode, если передан путь)
-    tools/ADMINCORE-UI-KIT.md (при включенном pack `admin-ui-foundation`)
-    tools/ADMINCORE-COMPONENT-CATALOG.md (генерируется при указании source path)
-    tools/VIDEO-DOWNLOAD-EDITING.md (при включенном pack `video-ops`)
-    tools/check-video-tools.ps1 и tools/check-video-tools.sh (при включенном pack `video-ops`)
-    assets/admincore/css/admincore-theme.min.css
-    assets/admincore/examples/** (импортируются из source path при наличии)
-    project-overview.md
-    analysis-summary.json
-    modules/*.md (опционально, если секции большие)
+Работай строго как Orchestrator для этого проекта. Сначала прочитай .ai/shared-docs/project-overview.md и все project *.md docs. Работу по реализации делегируй сабагентам асинхронно, оставайся доступным в чате, давай короткие статус-апдейты и сразу докладывай результаты каждого сабагента. Соблюдай git policy проекта: task branch -> PR -> merge в main.
 ```
+
+## Roadmap
+
+Будущие интеграции и отложенные профили ведутся в [ROADMAP.md](./ROADMAP.md).
