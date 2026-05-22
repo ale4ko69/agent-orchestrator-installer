@@ -5,12 +5,13 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 
@@ -27,12 +28,18 @@ EXCLUDED_DIRS = {
     ".idea",
     ".vscode",
     ".ai",
+    ".codex",
+    ".claude",
+    ".tmp",
+    ".trash",
 }
 
 AVAILABLE_PACKS = {"session-state", "jira", "admin-ui-foundation", "video-ops"}
 ALWAYS_REQUIRED_PACKS = {"session-state"}
 CONDITIONAL_REQUIRED_PACKS = {"admin-ui-foundation"}
 ADMIN_UI_BASE_OPTIONS = {"admincore", "custom", "none"}
+ADMIN_UI_MODE_OPTIONS = {"canonical", "legacy"}
+AVAILABLE_INSTALL_TARGETS = {"copilot", "claude", "codex"}
 
 UI_DIR_HINTS = {"ui", "frontend", "web", "client", "apps", "src"}
 SERVER_DIR_HINTS = {"server", "api", "backend", "src", "app"}
@@ -52,6 +59,32 @@ def read_config(path: Path) -> dict:
         raise FileNotFoundError(f"Config not found: {path}")
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def ensure_config_file(path: Path) -> None:
+    if path.exists():
+        return
+
+    config_path = path.expanduser().resolve()
+    config_dir = config_path.parent
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    project_root = config_dir
+    project_name = project_root.name or "project"
+    user_codex_home = Path.home() / ".codex"
+    payload = {
+        "projectName": project_name,
+        "projectRoot": project_root.as_posix(),
+        "codexHome": f"{project_root.as_posix()}/.ai",
+        "projectCodexDir": f"{project_root.as_posix()}/.codex",
+        "userCodexHome": user_codex_home.as_posix(),
+        "installTargets": ["copilot", "claude", "codex"],
+        "installCodexCli": False,
+        "mainBranch": "main",
+        "taskPrefix": "TASK",
+    }
+    config_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"Config not found. Created bootstrap config: {config_path}")
 
 
 def render_template(text: str, tokens: dict[str, str]) -> str:
@@ -125,14 +158,134 @@ def write_text_file(text: str, dst: Path, dry_run: bool, update_only: bool, stat
         stats.created_files += 1
 
 
-def remove_file(path: Path, dry_run: bool, stats: Stats) -> None:
+def managed_block_begin_marker(block_id: str) -> str:
+    return f"<!-- BEGIN MANAGED: agent-orchestrator-installer {block_id} -->"
+
+
+def managed_block_end_marker(block_id: str) -> str:
+    return f"<!-- END MANAGED: agent-orchestrator-installer {block_id} -->"
+
+
+def managed_block_source_header(source_template: str) -> str:
+    return f"<!-- Source: {source_template}; pack: core; schema: managed-block-v1 -->"
+
+
+def render_managed_block(block_id: str, body: str, source_template: str) -> str:
+    if not body.endswith("\n"):
+        body += "\n"
+    return (
+        f"{managed_block_begin_marker(block_id)}\n"
+        f"{managed_block_source_header(source_template)}\n"
+        f"{body}"
+        f"{managed_block_end_marker(block_id)}\n"
+    )
+
+
+def write_managed_markdown_block(
+    body: str,
+    dst: Path,
+    block_id: str,
+    source_template: str,
+    dry_run: bool,
+    update_only: bool,
+    stats: Stats,
+) -> None:
+    dst_exists = dst.exists()
+    block_text = render_managed_block(block_id, body, source_template)
+
+    if update_only and not dst_exists:
+        print(f"[SKIP:update-only] create managed block blocked: {dst}")
+        stats.skipped_files += 1
+        return
+
+    next_text = block_text
+    if dst_exists:
+        current = dst.read_text(encoding="utf-8")
+        begin = managed_block_begin_marker(block_id)
+        end = managed_block_end_marker(block_id)
+        begin_count = current.count(begin)
+        end_count = current.count(end)
+
+        if begin_count == 0 and end_count == 0:
+            if current != body:
+                print(f"[SKIP:conflict] no managed block marker in existing local file: {dst}")
+                stats.skipped_files += 1
+                return
+        elif begin_count == 1 and end_count == 1:
+            block_re = re.compile(
+                rf"(?ms)^{re.escape(begin)}\r?\n"
+                rf".*?"
+                rf"^{re.escape(end)}\r?\n?"
+            )
+            next_text, replacements = block_re.subn(block_text, current, count=1)
+            if replacements != 1:
+                print(f"[SKIP:conflict] invalid managed block in existing local file: {dst}")
+                stats.skipped_files += 1
+                return
+        else:
+            print(f"[SKIP:conflict] invalid managed block markers in existing local file: {dst}")
+            stats.skipped_files += 1
+            return
+
+    if dry_run:
+        op = "update" if dst_exists else "create"
+        print(f"[DRY-RUN] {op} managed block: {dst}")
+        if dst_exists:
+            stats.updated_files += 1
+        else:
+            stats.created_files += 1
+        return
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(next_text, encoding="utf-8")
+    if dst_exists:
+        stats.updated_files += 1
+    else:
+        stats.created_files += 1
+
+
+def find_repo_root(path: Path) -> Path:
+    current = path.resolve().parent
+    for candidate in [current, *current.parents]:
+        if (candidate / ".git").exists():
+            return candidate
+    return Path.cwd().resolve()
+
+
+def unique_trash_path(path: Path, repo_root: Path) -> Path:
+    original = path.resolve()
+    try:
+        rel = original.relative_to(repo_root)
+    except ValueError:
+        rel = Path(original.name)
+
+    trash_root = repo_root / ".trash" / date.today().isoformat()
+    dst = trash_root / rel
+    if not dst.exists():
+        return dst
+
+    for i in range(1, 1000):
+        candidate = dst.with_name(f"{dst.name}.{i}")
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f"Unable to choose unique trash path for: {path}")
+
+
+def remove_file(path: Path, dry_run: bool, update_only: bool, stats: Stats) -> None:
     if not path.exists():
+        return
+    if update_only:
+        print(f"[SKIP:update-only] delete file blocked: {path}")
+        stats.skipped_files += 1
         return
     if dry_run:
         print(f"[DRY-RUN] delete file: {path}")
         stats.updated_files += 1
         return
-    path.unlink()
+    repo_root = find_repo_root(path)
+    trash_path = unique_trash_path(path, repo_root)
+    trash_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(path), str(trash_path))
     stats.updated_files += 1
 
 
@@ -297,6 +450,230 @@ def copy_tree_files(src_root: Path, dst_root: Path, dry_run: bool, update_only: 
             copy_file(item, dst_root / rel, dry_run=dry_run, update_only=update_only, stats=stats)
 
 
+def resolve_user_codex_home(raw_value: str) -> Path:
+    if raw_value.strip():
+        return Path(raw_value).expanduser()
+    env_home = os.environ.get("CODEX_HOME", "").strip()
+    if env_home:
+        return Path(env_home).expanduser()
+    return Path.home() / ".codex"
+
+
+def install_codex_cli(install_cli: bool, dry_run: bool) -> None:
+    if not install_cli:
+        return
+
+    if shutil.which("codex"):
+        print("Codex CLI already found in PATH.")
+        return
+
+    npm_path = shutil.which("npm")
+    if not npm_path:
+        raise RuntimeError("npm was not found in PATH, so Codex CLI cannot be installed automatically.")
+
+    cmd = [npm_path, "install", "-g", "@openai/codex"]
+    if dry_run:
+        print(f"[DRY-RUN] would install Codex CLI for current user: {' '.join(cmd)}")
+        return
+
+    print("Installing Codex CLI for current user via npm...")
+    subprocess.run(cmd, check=True)
+
+
+def install_codex_templates(
+    repo_root: Path,
+    project_root: Path,
+    user_codex_home: Path,
+    project_codex_dir: Path,
+    tokens: dict[str, str],
+    install_targets: set[str],
+    dry_run: bool,
+    update_only: bool,
+    stats: Stats,
+) -> None:
+    install_codex_target = "codex" in install_targets
+    install_claude_target = "claude" in install_targets
+    if not install_codex_target and not install_claude_target:
+        return
+
+    target_global_skills = user_codex_home / "skills"
+    target_project_context = project_codex_dir / "project-context"
+    target_project_agents = project_codex_dir / "agents"
+
+    if install_codex_target:
+        ensure_dir(target_global_skills, dry_run=dry_run, update_only=update_only, stats=stats)
+        ensure_dir(project_codex_dir, dry_run=dry_run, update_only=update_only, stats=stats)
+        ensure_dir(target_project_context, dry_run=dry_run, update_only=update_only, stats=stats)
+        ensure_dir(target_project_context / "dev", dry_run=dry_run, update_only=update_only, stats=stats)
+        ensure_dir(target_project_context / "rules", dry_run=dry_run, update_only=update_only, stats=stats)
+        ensure_dir(target_project_context / "modules", dry_run=dry_run, update_only=update_only, stats=stats)
+        ensure_dir(target_project_agents, dry_run=dry_run, update_only=update_only, stats=stats)
+
+        copy_tree_files(
+            repo_root / "templates" / "codex-global" / "skills",
+            target_global_skills,
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
+        copy_tree_files(
+            repo_root / "templates" / "codex-project" / "agents",
+            target_project_agents,
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
+        copy_tree_files(
+            repo_root / "templates" / "codex-project" / "project-context" / "dev",
+            target_project_context / "dev",
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
+        copy_tree_files(
+            repo_root / "templates" / "codex-project" / "project-context" / "rules",
+            target_project_context / "rules",
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
+
+    readme_path = repo_root / "templates" / "_render" / "codex-project-README.md.tpl"
+    source_map_path = repo_root / "templates" / "_render" / "codex-source-map.md.tpl"
+    agents_md_path = repo_root / "templates" / "_render" / "AGENTS.md.tpl"
+    claude_md_path = repo_root / "templates" / "_render" / "CLAUDE.md.tpl"
+
+    if install_codex_target:
+        write_text_file(
+            render_template(readme_path.read_text(encoding="utf-8"), tokens),
+            project_codex_dir / "README.md",
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
+        write_text_file(
+            render_template(source_map_path.read_text(encoding="utf-8"), tokens),
+            target_project_context / "source-map.md",
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
+        write_managed_markdown_block(
+            render_template(agents_md_path.read_text(encoding="utf-8"), tokens),
+            project_root / "AGENTS.md",
+            block_id="root-agents",
+            source_template="templates/_render/AGENTS.md.tpl",
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
+    if install_claude_target:
+        write_managed_markdown_block(
+            render_template(claude_md_path.read_text(encoding="utf-8"), tokens),
+            project_root / "CLAUDE.md",
+            block_id="root-claude",
+            source_template="templates/_render/CLAUDE.md.tpl",
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
+
+
+def sync_analysis_into_codex_project(
+    target_docs: Path,
+    project_codex_dir: Path,
+    dry_run: bool,
+    update_only: bool,
+    stats: Stats,
+) -> None:
+    project_context = project_codex_dir / "project-context"
+    ensure_dir(project_context, dry_run=dry_run, update_only=update_only, stats=stats)
+    ensure_dir(project_context / "modules", dry_run=dry_run, update_only=update_only, stats=stats)
+
+    for filename in ("project-overview.md", "analysis-summary.json"):
+        src = target_docs / filename
+        if src.exists():
+            copy_file(src, project_context / filename, dry_run=dry_run, update_only=update_only, stats=stats)
+
+    modules_dir = target_docs / "modules"
+    if modules_dir.exists():
+        copy_tree_files(
+            modules_dir,
+            project_context / "modules",
+            dry_run=dry_run,
+            update_only=update_only,
+            stats=stats,
+        )
+
+
+def parse_install_targets(config: dict, cli_targets: str) -> set[str]:
+    targets: set[str] = set()
+
+    # CLI targets have priority and override config targets.
+    if cli_targets:
+        for raw in cli_targets.split(","):
+            t = raw.strip().lower()
+            if t:
+                targets.add(t)
+    else:
+        config_targets = config.get("installTargets", [])
+        if isinstance(config_targets, str):
+            for raw in config_targets.split(","):
+                t = raw.strip().lower()
+                if t:
+                    targets.add(t)
+        elif isinstance(config_targets, list):
+            for raw in config_targets:
+                t = str(raw).strip().lower()
+                if t:
+                    targets.add(t)
+
+    if not targets:
+        targets = set(AVAILABLE_INSTALL_TARGETS)
+
+    unknown = sorted(targets - AVAILABLE_INSTALL_TARGETS)
+    if unknown:
+        raise ValueError(
+            f"Unknown install target(s): {', '.join(unknown)}. "
+            f"Supported targets: {', '.join(sorted(AVAILABLE_INSTALL_TARGETS))}"
+        )
+    return targets
+
+
+def write_project_lockfile(
+    repo_root: Path,
+    config_path: Path,
+    project_root: Path,
+    install_targets: set[str],
+    enabled_packs: list[str],
+    update_only: bool,
+    diff_mode: bool,
+) -> None:
+    lock_path = project_root / ".ai" / "agent-orchestrator.lock.json"
+    if update_only and not lock_path.exists():
+        print(f"[SKIP:update-only] lockfile missing: {lock_path}")
+        return
+
+    payload = {
+        "schemaVersion": 1,
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "installer": {
+            "name": "agent-orchestrator-installer",
+            "script": (repo_root / "scripts" / "install.py").as_posix(),
+            "repoPath": repo_root.as_posix(),
+        },
+        "configPath": config_path.as_posix(),
+        "projectPath": project_root.as_posix(),
+        "installTargets": sorted(install_targets),
+        "installPacks": list(enabled_packs),
+        "updateOnly": update_only,
+        "diffMode": diff_mode,
+        "managedFiles": [],
+    }
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Install/update orchestrator templates and optionally analyze a project.",
@@ -322,11 +699,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack session-state\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack session-state,jira\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack video-ops\n"
+            "    python scripts/install.py ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-mode canonical --admin-ui-canonical-dir \"D:/path/to/canonical-output\"\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-base admincore --admin-ui-source \"D:/Design/admin-ui-source/v1.24.0\"\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-source-url \"https://example.com/admin-ui-v1.24.0.zip\" --admin-ui-sha256 \"<sha256>\"\n"
+            "\n"
+            "  Install Codex CLI for current user and portable Codex assets:\n"
+            "    python scripts/install.py ./project.config.json --install-codex-cli\n"
         ),
     )
     parser.add_argument("config_path", nargs="?", default="./project.config.json", help="Path to JSON config file.")
+    parser.add_argument(
+        "--diff",
+        "--diff-mode",
+        dest="diff_mode",
+        action="store_true",
+        help="Preview planned installer changes without writing files or bootstrapping missing config.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print planned changes without writing files.")
     parser.add_argument(
         "--update-only",
@@ -364,6 +752,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Admin UI base mode (default: from config or admincore).",
     )
     parser.add_argument(
+        "--admin-ui-mode",
+        choices=["canonical", "legacy"],
+        default="",
+        help="Admin UI source mode. canonical (default) or legacy (zip/source import).",
+    )
+    parser.add_argument(
+        "--admin-ui-canonical-dir",
+        default="",
+        help="Directory containing component-examples.json and css-report.json for canonical admin mode.",
+    )
+    parser.add_argument(
         "--admin-ui-source",
         default="",
         help="Optional source path for design examples/assets import (for admin-ui-foundation pack).",
@@ -382,6 +781,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--admin-ui-cache-dir",
         default="",
         help="Optional cache dir for downloaded/extracted admin UI archives (default: <projectRoot>/.tmp/admin-ui-cache).",
+    )
+    parser.add_argument(
+        "--install-codex-cli",
+        action="store_true",
+        help="Install @openai/codex globally for the current user via npm if it is not already available.",
+    )
+    parser.add_argument(
+        "--user-codex-home",
+        default="",
+        help="Override the user-level Codex home for reusable global skills. Default: CODEX_HOME or ~/.codex",
+    )
+    parser.add_argument(
+        "--install-targets",
+        default="",
+        help="Comma-separated targets to install: copilot, claude, codex. Default: all.",
     )
     return parser.parse_args(argv)
 
@@ -435,10 +849,23 @@ def parse_admin_ui_base(config: dict, cli_admin_ui_base: str) -> str:
     return candidate
 
 
+def parse_admin_ui_mode(config: dict, cli_admin_ui_mode: str) -> str:
+    candidate = (cli_admin_ui_mode or "").strip().lower()
+    if not candidate:
+        candidate = str(config.get("adminUiMode", "canonical")).strip().lower() or "canonical"
+    if candidate not in ADMIN_UI_MODE_OPTIONS:
+        raise ValueError(
+            f"Unknown admin UI mode: {candidate}. Supported: {', '.join(sorted(ADMIN_UI_MODE_OPTIONS))}"
+        )
+    return candidate
+
+
 def install_admincore_assets(
     target_docs: Path,
     repo_root: Path,
     admin_ui_base: str,
+    admin_ui_mode: str,
+    admin_ui_canonical_dir: Path | None,
     admin_ui_source: Path | None,
     dry_run: bool,
     update_only: bool,
@@ -460,6 +887,52 @@ def install_admincore_assets(
         copy_file(bundled_css, target_css_dir / "admincore-theme.min.css", dry_run=dry_run, update_only=update_only, stats=stats)
     if bundled_user_css.exists():
         copy_file(bundled_user_css, target_css_dir / "admincore-user.min.css", dry_run=dry_run, update_only=update_only, stats=stats)
+
+    tools_dir = target_docs / "tools"
+    ensure_dir(tools_dir, dry_run=dry_run, update_only=update_only, stats=stats)
+    canonical_dir = tools_dir / "admincore-canonical"
+    ensure_dir(canonical_dir, dry_run=dry_run, update_only=update_only, stats=stats)
+
+    canonical_notes = [
+        "# AdminCore Canonical Mode",
+        "",
+        f"- Mode: `{admin_ui_mode}`",
+        "- Default mode is `canonical`.",
+        "- In canonical mode, admin UI generation must use only:",
+        "  - `admincore-canonical/component-examples.json`",
+        "  - `admincore-canonical/css-report.json`",
+        "- ZIP/source import is considered `legacy` mode only.",
+        "",
+    ]
+    write_text_file(
+        "\n".join(canonical_notes),
+        tools_dir / "ADMINCORE-CANONICAL-MODE.md",
+        dry_run=dry_run,
+        update_only=update_only,
+        stats=stats,
+    )
+
+    if admin_ui_mode == "canonical":
+        if admin_ui_canonical_dir and admin_ui_canonical_dir.exists():
+            examples_json = admin_ui_canonical_dir / "component-examples.json"
+            css_report_json = admin_ui_canonical_dir / "css-report.json"
+            if examples_json.exists():
+                copy_file(
+                    examples_json,
+                    canonical_dir / "component-examples.json",
+                    dry_run=dry_run,
+                    update_only=update_only,
+                    stats=stats,
+                )
+            if css_report_json.exists():
+                copy_file(
+                    css_report_json,
+                    canonical_dir / "css-report.json",
+                    dry_run=dry_run,
+                    update_only=update_only,
+                    stats=stats,
+                )
+        return
 
     source_root = admin_ui_source if admin_ui_source else None
     if not source_root or not source_root.exists():
@@ -617,7 +1090,7 @@ def synthesize_commands_doc(
         target_docs / "QUICK-COMMANDS-JIRA.md",
     ]
     for f in legacy_files:
-        remove_file(f, dry_run=dry_run, stats=stats)
+        remove_file(f, dry_run=dry_run, update_only=update_only, stats=stats)
 
 
 def detect_analysis_profile(data: dict) -> str:
@@ -968,6 +1441,8 @@ def run_installation(
     stats: Stats,
     enabled_packs: list[str],
     admin_ui_base: str,
+    admin_ui_mode: str,
+    admin_ui_canonical_dir: Path | None,
     admin_ui_source: Path | None,
 ) -> None:
     ensure_dir(target_copilot, dry_run=dry_run, update_only=update_only, stats=stats)
@@ -997,6 +1472,8 @@ def run_installation(
             target_docs=target_docs,
             repo_root=repo_root,
             admin_ui_base=admin_ui_base,
+            admin_ui_mode=admin_ui_mode,
+            admin_ui_canonical_dir=admin_ui_canonical_dir,
             admin_ui_source=admin_ui_source,
             dry_run=dry_run,
             update_only=update_only,
@@ -1095,11 +1572,22 @@ def run_analysis(
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     config_path = Path(args.config_path)
+    if not config_path.is_absolute():
+        config_path = (Path.cwd() / config_path).resolve()
     repo_root = Path(__file__).resolve().parent.parent
     stats = Stats()
 
+    if args.diff_mode:
+        args.dry_run = True
+        if not config_path.exists():
+            print(f"Config not found for diff mode: {config_path}", file=sys.stderr)
+            print("Diff mode does not create bootstrap config files.", file=sys.stderr)
+            return 1
+    else:
+        ensure_config_file(config_path)
     config = read_config(config_path)
     admin_ui_base = parse_admin_ui_base(config, args.admin_ui_base)
+    admin_ui_mode = parse_admin_ui_mode(config, args.admin_ui_mode)
     enabled_packs = parse_enabled_packs(config, args.enable_pack)
     enabled_packs = apply_default_required_packs(enabled_packs, admin_ui_base)
 
@@ -1116,18 +1604,28 @@ def main(argv: list[str]) -> int:
     database = config.get("database", "TBD").strip() or "TBD"
     hosting = config.get("hosting", "TBD").strip() or "TBD"
     shared_types_path = config.get("sharedTypesPath", "src/shared/types").strip() or "src/shared/types"
+    admin_ui_canonical_dir_raw = (args.admin_ui_canonical_dir or str(config.get("adminUiCanonicalDir", "")).strip())
     admin_ui_source_raw = (args.admin_ui_source or str(config.get("adminUiSourcePath", "")).strip())
     admin_ui_source_url = (args.admin_ui_source_url or str(config.get("adminUiSourceUrl", "")).strip())
     admin_ui_sha256 = (args.admin_ui_sha256 or str(config.get("adminUiSourceSha256", "")).strip())
     admin_ui_cache_dir = (args.admin_ui_cache_dir or str(config.get("adminUiCacheDir", "")).strip())
+    install_codex_cli_flag = bool(args.install_codex_cli or bool(config.get("installCodexCli", False)))
+    user_codex_home_raw = args.user_codex_home or str(config.get("userCodexHome", "")).strip()
+    project_codex_dir_raw = str(config.get("projectCodexDir", "")).strip()
+    install_targets = parse_install_targets(config, args.install_targets)
 
     if not project_name or not project_root_raw:
         raise ValueError("projectName and projectRoot are required")
 
     project_root = Path(project_root_raw)
     codex_home = Path(codex_home_raw) if codex_home_raw else project_root / ".ai"
+    user_codex_home = resolve_user_codex_home(user_codex_home_raw)
+    project_codex_dir = Path(project_codex_dir_raw).expanduser() if project_codex_dir_raw else project_root / ".codex"
+    admin_ui_canonical_dir: Path | None = None
+    if admin_ui_canonical_dir_raw:
+        admin_ui_canonical_dir = Path(admin_ui_canonical_dir_raw).expanduser()
     admin_ui_source: Path | None = None
-    if "admin-ui-foundation" in enabled_packs and admin_ui_base == "admincore":
+    if "admin-ui-foundation" in enabled_packs and admin_ui_base == "admincore" and admin_ui_mode == "legacy":
         admin_ui_source = resolve_admin_ui_source(
             source_path_raw=admin_ui_source_raw,
             source_url_raw=admin_ui_source_url,
@@ -1142,6 +1640,7 @@ def main(argv: list[str]) -> int:
     target_docs = codex_home / "shared-docs"
 
     print("Mode:")
+    print(f"- diff-mode: {args.diff_mode}")
     print(f"- dry-run: {args.dry_run}")
     print(f"- update-only: {args.update_only}")
     print(f"- analyze-project: {args.analyze_project}")
@@ -1149,15 +1648,26 @@ def main(argv: list[str]) -> int:
     print(f"- analyze-profile: {args.analyze_profile}")
     print(f"- enabled packs: {', '.join(enabled_packs) if enabled_packs else 'none'}")
     print(f"- admin ui base: {admin_ui_base}")
+    print(f"- admin ui mode: {admin_ui_mode}")
+    print(f"- admin ui canonical dir: {admin_ui_canonical_dir if admin_ui_canonical_dir else 'none'}")
     print(f"- admin ui source path: {admin_ui_source_raw if admin_ui_source_raw else 'none'}")
     print(f"- admin ui source url: {admin_ui_source_url if admin_ui_source_url else 'none'}")
     print(f"- admin ui source resolved: {admin_ui_source if admin_ui_source else 'none'}")
     print(f"- target codex home: {codex_home}")
+    print(f"- user codex home: {user_codex_home}")
+    print(f"- project codex dir: {project_codex_dir}")
+    print(f"- install codex cli: {install_codex_cli_flag}")
+    print(f"- install targets: {', '.join(sorted(install_targets))}")
+
+    install_codex_cli(install_codex_cli_flag, args.dry_run)
 
     if not args.analyze_only:
         tokens = {
             "PROJECT_NAME": project_name,
             "PROJECT_ROOT": str(project_root).replace("\\", "/"),
+            "CODEX_HOME": str(codex_home).replace("\\", "/"),
+            "USER_CODEX_HOME": str(user_codex_home).replace("\\", "/"),
+            "PROJECT_CODEX_DIR": str(project_codex_dir).replace("\\", "/"),
             "MAIN_BRANCH": main_branch,
             "TASK_PREFIX": task_prefix,
             "DATE": date.today().isoformat(),
@@ -1170,18 +1680,32 @@ def main(argv: list[str]) -> int:
             "HOSTING": hosting,
             "SHARED_TYPES_PATH": shared_types_path,
         }
-        run_installation(
+        if "copilot" in install_targets:
+            run_installation(
+                repo_root=repo_root,
+                target_copilot=target_copilot,
+                target_agents=target_agents,
+                target_docs=target_docs,
+                tokens=tokens,
+                dry_run=args.dry_run,
+                update_only=args.update_only,
+                stats=stats,
+                enabled_packs=enabled_packs,
+                admin_ui_base=admin_ui_base,
+                admin_ui_mode=admin_ui_mode,
+                admin_ui_canonical_dir=admin_ui_canonical_dir,
+                admin_ui_source=admin_ui_source,
+            )
+        install_codex_templates(
             repo_root=repo_root,
-            target_copilot=target_copilot,
-            target_agents=target_agents,
-            target_docs=target_docs,
+            project_root=project_root,
+            user_codex_home=user_codex_home,
+            project_codex_dir=project_codex_dir,
             tokens=tokens,
+            install_targets=install_targets,
             dry_run=args.dry_run,
             update_only=args.update_only,
             stats=stats,
-            enabled_packs=enabled_packs,
-            admin_ui_base=admin_ui_base,
-            admin_ui_source=admin_ui_source,
         )
 
     should_prompt_second_step = (
@@ -1198,7 +1722,7 @@ def main(argv: list[str]) -> int:
         if answer in {"y", "yes"}:
             args.analyze_project = True
 
-    if args.analyze_project:
+    if args.analyze_project and "copilot" in install_targets:
         ensure_dir(target_docs, dry_run=args.dry_run, update_only=args.update_only, stats=stats)
         run_analysis(
             project_name=project_name,
@@ -1210,10 +1734,31 @@ def main(argv: list[str]) -> int:
             update_only=args.update_only,
             stats=stats,
         )
+        if "codex" in install_targets:
+            sync_analysis_into_codex_project(
+                target_docs=target_docs,
+                project_codex_dir=project_codex_dir,
+                dry_run=args.dry_run,
+                update_only=args.update_only,
+                stats=stats,
+            )
+
+    if not args.dry_run:
+        write_project_lockfile(
+            repo_root=repo_root,
+            config_path=config_path,
+            project_root=project_root,
+            install_targets=install_targets,
+            enabled_packs=enabled_packs,
+            update_only=args.update_only,
+            diff_mode=args.diff_mode,
+        )
 
     print("\nDone")
     print(f"Project: {project_name}")
     print(f"Codex Home: {codex_home}")
+    print(f"User Codex Home: {user_codex_home}")
+    print(f"Project Codex Dir: {project_codex_dir}")
     print(f"Agents: {target_agents}")
     print(f"Docs: {target_docs}")
     print("Summary:")

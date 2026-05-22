@@ -4,6 +4,15 @@ Russian version: [README.ru.md](./README.ru.md)
 
 Cross-platform installer for agent orchestration templates and project analysis docs.
 
+Multi-target output:
+- `Copilot` -> `.ai/copilot-config/...` and `.ai/shared-docs/...`
+- `Claude Code` -> `CLAUDE.md`
+- `Codex` -> `AGENTS.md`, `<repo>/.codex/...`, `~/.codex/skills/...`
+
+Important:
+- `.claude/` runtime worktrees, locks, and state files are not template assets.
+- Codex global skills are user-scoped and should live in the current user's Codex home.
+
 Roadmap (planned features and deferred integrations): [ROADMAP.md](./ROADMAP.md)
 
 Skill pack specs (separate README per skill):
@@ -27,10 +36,30 @@ Skill pack specs (separate README per skill):
 The tool supports two stages:
 1. Install agent/rules infrastructure
 2. Analyze an existing project and generate overview documentation
+3. Install portable Codex assets and optional user-scope Codex CLI
+
+## Install Targets
+You can install all targets together or only the layers you need:
+- `copilot`
+- `claude`
+- `codex`
+
+Default behavior:
+- if `installTargets` is not set, the installer applies all three targets
+- bootstrap scripts generate all three targets by default
+
+Config and flags:
+- `installTargets` in `project.config.json`
+- `-InstallTargets copilot,claude,codex` / `--install-targets copilot,claude,codex`
+- `codexHome` controls project-local Codex output (default: `<projectRoot>/.ai`)
+- `installCodexCli: true` or `--install-codex-cli`
+- `userCodexHome` or `--user-codex-home`
+- Codex CLI/user-scope assets use `CODEX_HOME` or `~/.codex` unless `userCodexHome` is set.
 
 Admin panel baseline policy (default):
 - `admin-ui-foundation` is enforced by default as required pack
 - default `adminUiBase` is `admincore`
+- default `adminUiMode` is `canonical`
 - explicit opt-out is possible only with `adminUiBase=none`
 
 Session continuity policy (default):
@@ -133,7 +162,7 @@ Mode presets (copy/paste variants): [ORCHESTRATOR-MODES.md](./templates/shared-d
 
 ## Analysis Flow
 When analysis is enabled, the tool:
-1. Scans repository structure (excluding `.git`, `node_modules`, `dist`, `build`, `.venv`, etc.)
+1. Scans repository structure (excluding `.git`, `node_modules`, `dist`, `build`, `.venv`, `venv`, `target`, `out`, `.next`, `.idea`, `.vscode`, `.ai`, `.codex`, `.claude`, `.tmp`, `.trash`)
 2. Detects manifests/entry points (`package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `Dockerfile`, `docker-compose*`, `Makefile`, CI workflows)
 3. Detects all directories containing `.md` files (existing docs intake)
 4. Builds module sections:
@@ -162,7 +191,16 @@ If a project is new and mostly empty:
 - unknowns/risks are marked explicitly
 - rerun analysis after first scaffold commit
 
-## Admin UI ZIP Source Workflow
+## Admin UI Source Modes
+Default mode: `canonical`
+- source of truth: `component-examples.json` + `css-report.json`
+- copied into `.ai/shared-docs/tools/admincore-canonical/` when `--admin-ui-canonical-dir` is provided
+
+Legacy mode: `legacy`
+- enables ZIP/source import flow for Admin UI examples/assets
+- intended for backward compatibility only
+
+## Admin UI ZIP Source Workflow (Legacy)
 For convenience, Admin UI source can be provided as a zip archive instead of a local folder.
 
 Resolution order:
@@ -182,6 +220,7 @@ Production example (ready to use):
 
 ## Flags
 - `-DryRun / --dry-run`: preview changes without writing files
+- `-Diff / --diff` (also `--diff-mode` in Python): no-write diff/preview mode
 - `-UpdateOnly / --update-only`: update existing files only
 - `-AnalyzeProject / --analyze-project`: run analysis + generate overview
 - `-AnalyzeOnly / --analyze-only`: analysis only, skip template installation
@@ -190,10 +229,18 @@ Production example (ready to use):
 - `-NoSecondStepPrompt / --no-second-step-prompt`: skip stage-2 prompt after install
 - `-EnablePack / --enable-pack`: packs, comma-separated (currently: `session-state`, `jira`, `admin-ui-foundation`, `video-ops`; `session-state` is always auto-enabled, `admin-ui-foundation` is auto-enabled unless `adminUiBase=none`)
 - `-AdminUiBase / --admin-ui-base`: `admincore|custom|none` (default: `admincore`)
+- `--admin-ui-mode`: `canonical|legacy` (default: `canonical`)
+- `--admin-ui-canonical-dir`: directory containing `component-examples.json` and `css-report.json`
 - `-AdminUiSource / --admin-ui-source`: optional local source path for importing admin UI examples/assets
 - `--admin-ui-source-url`: optional URL/path to `.zip` archive with admin UI source snapshot
 - `--admin-ui-sha256`: optional checksum verification for downloaded archive
 - `--admin-ui-cache-dir`: optional cache directory for downloaded/extracted archive
+
+## Generated File Safety
+- Root `AGENTS.md` and `CLAUDE.md` are updated through managed Markdown blocks; unmanaged local files are skipped as conflicts.
+- `.ai/agent-orchestrator.lock.json` records the effective config, targets, packs, and installer version after write runs.
+- Replaced or deleted installer-owned files are moved under `<projectRoot>/.trash/<date>/` instead of being removed directly.
+- `.tmp/` is used for bootstrap/cache work and is excluded from analysis with generated AI/runtime folders.
 
 ## Optional Config Fields
 In addition to required `projectName` and `projectRoot`, you can set:
@@ -207,6 +254,8 @@ In addition to required `projectName` and `projectRoot`, you can set:
 - `sharedTypesPath`
 - `enabledPacks` (array or comma-separated string, example: `["session-state","jira","admin-ui-foundation","video-ops"]`)
 - `adminUiBase` (`admincore|custom|none`, default `admincore`; `none` disables default admin-ui-foundation enforcement)
+- `adminUiMode` (`canonical|legacy`, default `canonical`)
+- `adminUiCanonicalDir` (directory containing `component-examples.json` and `css-report.json`)
 - `adminUiSourcePath` (optional local path for importing examples/assets)
 - `adminUiSourceUrl` (optional URL/path to `.zip` archive)
 - `adminUiSourceSha256` (optional archive checksum)
@@ -274,6 +323,7 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state,jira
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack video-ops
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation --admin-ui-mode canonical --admin-ui-canonical-dir "D:\path\to\canonical-output"
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiBase admincore -AdminUiSource "D:\Design\admin-ui-source\v1.24.0"
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiSourceUrl "https://example.com/admin-ui-v1.24.0.zip" -AdminUiSha256 "<sha256>"
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -AdminUiBase none
@@ -301,6 +351,7 @@ bash ./scripts/install.sh ./project.config.json --analyze-project
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack session-state,jira
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack video-ops
+bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-mode canonical --admin-ui-canonical-dir "/path/to/canonical-output"
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-base admincore --admin-ui-source "/mnt/d/Design/admin-ui-source/v1.24.0"
 bash ./scripts/install.sh ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-source-url "https://example.com/admin-ui-v1.24.0.zip" --admin-ui-sha256 "<sha256>"
 bash ./scripts/install.sh ./project.config.json --analyze-project --admin-ui-base none
@@ -333,6 +384,9 @@ Admin rights may be required only if your project is located in a protected OS d
     QUICK-COMMANDS.md (when `session-state` pack is enabled)
     JIRA-WORKFLOW.md and QUICK-COMMANDS-JIRA.md (when `jira` pack is enabled)
     rules/ADMIN-UI-FOUNDATION.md (when `admin-ui-foundation` pack is enabled)
+    tools/ADMINCORE-CANONICAL-MODE.md (when `admin-ui-foundation` pack is enabled)
+    tools/admincore-canonical/component-examples.json (canonical mode, if provided)
+    tools/admincore-canonical/css-report.json (canonical mode, if provided)
     tools/ADMINCORE-UI-KIT.md (when `admin-ui-foundation` pack is enabled)
     tools/ADMINCORE-COMPONENT-CATALOG.md (auto-generated when source path is provided)
     tools/VIDEO-DOWNLOAD-EDITING.md (when `video-ops` pack is enabled)

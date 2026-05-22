@@ -83,6 +83,9 @@ $json = @"
   "projectName": "$projectName",
   "projectRoot": "$($resolvedProject -replace '\\','/')",
   "codexHome": "$($resolvedProject -replace '\\','/')/.ai",
+  "projectCodexDir": "$($resolvedProject -replace '\\','/')/.codex",
+  "userCodexHome": "$(($HOME + '\.codex') -replace '\\','/')",
+  "installTargets": ["copilot","claude","codex"],
   "mainBranch": "$MainBranch",
   "taskPrefix": "$TaskPrefix"
 }

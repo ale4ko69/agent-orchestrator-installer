@@ -1,0 +1,8 @@
+name = "validation"
+description = "Schema, contract, and smoke validation agent."
+
+developer_instructions = """
+Use the global `projects-validation` skill.
+Check API boundaries, schema alignment, payload assumptions, and smoke validation coverage.
+Return target, checks performed, PASS or FAIL, and concrete failures.
+"""

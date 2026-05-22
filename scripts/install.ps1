@@ -5,12 +5,16 @@ Installs agent templates and optionally analyzes a project.
 .DESCRIPTION
 Stage 1: install copilot/shared-docs templates into target project.
 Stage 2: optional project analysis with overview docs generation.
+Stage 3: install portable Codex assets and optional user-scope Codex CLI.
 
 .PARAMETER ConfigPath
 Path to JSON config file with projectName/projectRoot and optional fields.
 
 .PARAMETER DryRun
 Preview all planned file operations without writing changes.
+
+.PARAMETER Diff
+Preview install/update changes without writing files or bootstrapping missing config.
 
 .PARAMETER UpdateOnly
 Update only existing files/directories. Skip creating missing paths.
@@ -49,6 +53,15 @@ Optional sha256 checksum for admin UI source archive verification.
 .PARAMETER AdminUiCacheDir
 Optional cache directory for downloaded/extracted admin UI archive.
 
+.PARAMETER InstallCodexCli
+Install @openai/codex globally for the current user via npm if it is not already available.
+
+.PARAMETER UserCodexHome
+Override the user-level Codex home used for reusable global skills. Default: CODEX_HOME or ~/.codex.
+
+.PARAMETER InstallTargets
+Comma-separated install targets: copilot, claude, codex. Default: all.
+
 .EXAMPLE
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json
 
@@ -72,12 +85,16 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -En
 
 .EXAMPLE
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack admin-ui-foundation -AdminUiSourceUrl "https://example.com/admin-ui-v1.24.0.zip" -AdminUiSha256 "<sha256>"
+
+.EXAMPLE
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -InstallCodexCli
 #>
 
 param(
   [Parameter(Mandatory=$false)]
   [string]$ConfigPath = ".\project.config.json",
   [switch]$DryRun,
+  [switch]$Diff,
   [switch]$UpdateOnly,
   [switch]$AnalyzeProject,
   [switch]$AnalyzeOnly,
@@ -91,19 +108,57 @@ param(
   [string]$AdminUiSource = "",
   [string]$AdminUiSourceUrl = "",
   [string]$AdminUiSha256 = "",
-  [string]$AdminUiCacheDir = ""
+  [string]$AdminUiCacheDir = "",
+  [switch]$InstallCodexCli,
+  [string]$UserCodexHome = "",
+  [string]$InstallTargets = ""
 )
 
 $ErrorActionPreference = "Stop"
 
-$ExcludedDirs = @('.git','node_modules','dist','build','.venv','venv','target','out','.next','.idea','.vscode','.ai')
+$ExcludedDirs = @('.git','node_modules','dist','build','.venv','venv','target','out','.next','.idea','.vscode','.ai','.codex','.claude','.tmp','.trash')
 $AvailablePacks = @('session-state','jira','admin-ui-foundation','video-ops')
 $AlwaysRequiredPacks = @('session-state')
 $ConditionalRequiredPacks = @('admin-ui-foundation')
+$AvailableInstallTargets = @('copilot','claude','codex')
 
 function Read-Config([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path)) { throw "Config not found: $Path" }
   return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+}
+
+function Ensure-ConfigFile([string]$Path, [bool]$NoWrite) {
+  if (Test-Path -LiteralPath $Path) { return }
+  if ($NoWrite) {
+    throw "Config not found: $Path. Diff/no-write mode will not create bootstrap config."
+  }
+
+  $resolvedPath = [System.IO.Path]::GetFullPath($Path)
+  $configDir = Split-Path -Parent $resolvedPath
+  if (-not [string]::IsNullOrWhiteSpace($configDir) -and -not (Test-Path -LiteralPath $configDir)) {
+    New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+  }
+
+  $projectRoot = if (-not [string]::IsNullOrWhiteSpace($configDir)) { $configDir } else { (Get-Location).Path }
+  $projectName = Split-Path -Leaf $projectRoot
+  if ([string]::IsNullOrWhiteSpace($projectName)) { $projectName = "project" }
+  $userCodexHome = Join-Path $HOME ".codex"
+
+  $json = @"
+{
+  "projectName": "$projectName",
+  "projectRoot": "$($projectRoot -replace '\\','/')",
+  "codexHome": "$($projectRoot -replace '\\','/')/.ai",
+  "projectCodexDir": "$($projectRoot -replace '\\','/')/.codex",
+  "userCodexHome": "$($userCodexHome -replace '\\','/')",
+  "installTargets": ["copilot", "claude", "codex"],
+  "installCodexCli": false,
+  "mainBranch": "main",
+  "taskPrefix": "TASK"
+}
+"@
+  Set-Content -LiteralPath $resolvedPath -Value $json -Encoding UTF8
+  Write-Host "Config not found. Created bootstrap config: $resolvedPath"
 }
 
 function Apply-Tokens([string]$Text, [hashtable]$Tokens) {
@@ -135,6 +190,116 @@ function Write-ManagedText([string]$Text, [string]$Dst, [bool]$IsDryRun, [bool]$
   if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
   Set-Content -LiteralPath $Dst -Encoding UTF8 -Value $Text
   if ($exists) { $Stats.updated_files++ } else { $Stats.created_files++ }
+}
+
+function Get-ManagedBlockBeginMarker([string]$BlockId) {
+  return "<!-- BEGIN MANAGED: agent-orchestrator-installer $BlockId -->"
+}
+
+function Get-ManagedBlockEndMarker([string]$BlockId) {
+  return "<!-- END MANAGED: agent-orchestrator-installer $BlockId -->"
+}
+
+function Get-ManagedBlockSourceHeader([string]$SourceTemplate) {
+  return "<!-- Source: $SourceTemplate; pack: core; schema: managed-block-v1 -->"
+}
+
+function New-ManagedBlock([string]$BlockId, [string]$Body, [string]$SourceTemplate) {
+  $trimmedBody = $Body.TrimEnd("`r","`n")
+  return @(
+    (Get-ManagedBlockBeginMarker -BlockId $BlockId)
+    (Get-ManagedBlockSourceHeader -SourceTemplate $SourceTemplate)
+    $trimmedBody
+    (Get-ManagedBlockEndMarker -BlockId $BlockId)
+    ""
+  ) -join "`n"
+}
+
+function Test-LegacyRenderedBody([string]$ExistingText, [string]$RenderedBody) {
+  if ($ExistingText -eq $RenderedBody) { return $true }
+  return ($ExistingText.TrimEnd("`r","`n") -eq $RenderedBody.TrimEnd("`r","`n"))
+}
+
+function Write-ManagedBlockFile([string]$Body, [string]$Dst, [string]$BlockId, [string]$SourceTemplate, [bool]$IsDryRun, [bool]$IsUpdateOnly, [hashtable]$Stats) {
+  $exists = Test-Path -LiteralPath $Dst
+  if ($IsUpdateOnly -and -not $exists) { Write-Host "[SKIP:update-only] create file blocked: $Dst"; $Stats.skipped_files++; return }
+
+  $block = New-ManagedBlock -BlockId $BlockId -Body $Body -SourceTemplate $SourceTemplate
+  $nextText = $block
+
+  if ($exists) {
+    $existing = Get-Content -LiteralPath $Dst -Raw
+    $beginMarker = Get-ManagedBlockBeginMarker -BlockId $BlockId
+    $endMarker = Get-ManagedBlockEndMarker -BlockId $BlockId
+    $begin = $existing.IndexOf($beginMarker, [System.StringComparison]::Ordinal)
+    $end = $existing.IndexOf($endMarker, [System.StringComparison]::Ordinal)
+    $hasSingleBegin = ($begin -ge 0 -and $existing.IndexOf($beginMarker, $begin + $beginMarker.Length, [System.StringComparison]::Ordinal) -lt 0)
+    $hasSingleEnd = ($end -ge 0 -and $existing.IndexOf($endMarker, $end + $endMarker.Length, [System.StringComparison]::Ordinal) -lt 0)
+
+    if ($hasSingleBegin -and $hasSingleEnd -and $end -gt $begin) {
+      $afterEnd = $end + $endMarker.Length
+      $prefix = $existing.Substring(0, $begin).TrimEnd("`r","`n")
+      $suffix = $existing.Substring($afterEnd).TrimStart("`r","`n")
+      $parts = @()
+      if ($prefix.Length -gt 0) { $parts += $prefix; $parts += "" }
+      $parts += $block.TrimEnd("`r","`n")
+      if ($suffix.Length -gt 0) { $parts += ""; $parts += $suffix }
+      $nextText = ($parts -join "`n") + "`n"
+    } elseif ($begin -lt 0 -and $end -lt 0 -and (Test-LegacyRenderedBody -ExistingText $existing -RenderedBody $Body)) {
+      $nextText = $block
+    } else {
+      Write-Host "[SKIP:conflict] unmanaged local file exists: $Dst"
+      $Stats.skipped_files++
+      return
+    }
+  }
+
+  if ($IsDryRun) {
+    if ($exists) { Write-Host "[DRY-RUN] update managed block: $Dst"; $Stats.updated_files++ }
+    else { Write-Host "[DRY-RUN] create managed block: $Dst"; $Stats.created_files++ }
+    return
+  }
+
+  $parent = Split-Path -Parent $Dst
+  if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
+  Set-Content -LiteralPath $Dst -Encoding UTF8 -Value $nextText
+  if ($exists) { $Stats.updated_files++ } else { $Stats.created_files++ }
+}
+
+function Write-ProjectLockfile(
+  [string]$ProjectRoot,
+  [string]$ConfigPath,
+  [string[]]$InstallTargets,
+  [string[]]$InstallPacks,
+  [bool]$IsDryRun,
+  [bool]$IsUpdateOnly,
+  [bool]$DiffMode,
+  [hashtable]$Stats
+) {
+  if ($IsDryRun -or $DiffMode) { return }
+
+  $lockfilePath = Join-Path (Join-Path $ProjectRoot ".ai") "agent-orchestrator.lock.json"
+  $payload = [ordered]@{
+    schemaVersion = 1
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    installer = [ordered]@{
+      name = "agent-orchestrator-installer"
+      script = "scripts/install.ps1"
+    }
+    configPath = (([System.IO.Path]::GetFullPath([string]$ConfigPath)) -replace '\\','/')
+    projectPath = (([System.IO.Path]::GetFullPath([string]$ProjectRoot)) -replace '\\','/')
+    installTargets = @($InstallTargets)
+    updateOnly = $IsUpdateOnly
+    diffMode = $DiffMode
+    managedFiles = @()
+  }
+
+  if ($null -ne $InstallPacks) {
+    $payload["installPacks"] = @($InstallPacks)
+  }
+
+  $json = $payload | ConvertTo-Json -Depth 8
+  Write-ManagedText -Text ($json + "`n") -Dst $lockfilePath -IsDryRun $false -IsUpdateOnly $IsUpdateOnly -Stats $Stats
 }
 
 function Copy-File-Safely([string]$Src, [string]$Dst, [bool]$IsDryRun, [bool]$IsUpdateOnly, [hashtable]$Stats) {
@@ -213,6 +378,117 @@ function Copy-TreeFiles([string]$SrcRoot, [string]$DstRoot, [bool]$IsDryRun, [bo
   }
 }
 
+function Resolve-UserCodexHome([string]$RawValue) {
+  if (-not [string]::IsNullOrWhiteSpace($RawValue)) {
+    return [System.IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($RawValue))
+  }
+  if (-not [string]::IsNullOrWhiteSpace($env:CODEX_HOME)) {
+    return [System.IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:CODEX_HOME))
+  }
+  return (Join-Path $HOME ".codex")
+}
+
+function Install-CodexCliForUser([bool]$ShouldInstall, [bool]$IsDryRun) {
+  if (-not $ShouldInstall) { return }
+
+  $codexCmd = Get-Command codex -ErrorAction SilentlyContinue
+  if ($codexCmd) {
+    Write-Host "Codex CLI already found in PATH."
+    return
+  }
+
+  $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+  if (-not $npmCmd) {
+    throw "npm was not found in PATH, so Codex CLI cannot be installed automatically."
+  }
+
+  if ($IsDryRun) {
+    Write-Host "[DRY-RUN] would install Codex CLI for current user: npm install -g @openai/codex"
+    return
+  }
+
+  Write-Host "Installing Codex CLI for current user via npm..."
+  & $npmCmd.Source install -g @openai/codex
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to install @openai/codex via npm."
+  }
+}
+
+function Install-CodexTemplates(
+  [string]$RepoRoot,
+  [string]$ProjectRoot,
+  [string]$UserCodexHomePath,
+  [string]$ProjectCodexDir,
+  [hashtable]$Tokens,
+  [string[]]$InstallTargets,
+  [bool]$IsDryRun,
+  [bool]$IsUpdateOnly,
+  [hashtable]$Stats
+) {
+  $installCodexTarget = $InstallTargets -contains "codex"
+  $installClaudeTarget = $InstallTargets -contains "claude"
+  if ((-not $installCodexTarget) -and (-not $installClaudeTarget)) { return }
+
+  $targetGlobalSkills = Join-Path $UserCodexHomePath "skills"
+  $targetProjectContext = Join-Path $ProjectCodexDir "project-context"
+  $targetProjectAgents = Join-Path $ProjectCodexDir "agents"
+
+  if ($installCodexTarget) {
+    Ensure-Dir -Path $targetGlobalSkills -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
+    Ensure-Dir -Path $ProjectCodexDir -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
+    Ensure-Dir -Path $targetProjectContext -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
+    Ensure-Dir -Path (Join-Path $targetProjectContext "dev") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
+    Ensure-Dir -Path (Join-Path $targetProjectContext "rules") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
+    Ensure-Dir -Path (Join-Path $targetProjectContext "modules") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
+    Ensure-Dir -Path $targetProjectAgents -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
+
+    Copy-TreeFiles -SrcRoot (Join-Path $RepoRoot "templates/codex-global/skills") -DstRoot $targetGlobalSkills -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+    Copy-TreeFiles -SrcRoot (Join-Path $RepoRoot "templates/codex-project/agents") -DstRoot $targetProjectAgents -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+    Copy-TreeFiles -SrcRoot (Join-Path $RepoRoot "templates/codex-project/project-context/dev") -DstRoot (Join-Path $targetProjectContext "dev") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+    Copy-TreeFiles -SrcRoot (Join-Path $RepoRoot "templates/codex-project/project-context/rules") -DstRoot (Join-Path $targetProjectContext "rules") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+  }
+
+  if ($installCodexTarget) {
+    $codexReadme = Apply-Tokens -Text (Get-Content -LiteralPath (Join-Path $RepoRoot "templates/_render/codex-project-README.md.tpl") -Raw) -Tokens $Tokens
+    Write-ManagedText -Text $codexReadme -Dst (Join-Path $ProjectCodexDir "README.md") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+
+    $sourceMap = Apply-Tokens -Text (Get-Content -LiteralPath (Join-Path $RepoRoot "templates/_render/codex-source-map.md.tpl") -Raw) -Tokens $Tokens
+    Write-ManagedText -Text $sourceMap -Dst (Join-Path $targetProjectContext "source-map.md") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+
+    $agentsMd = Apply-Tokens -Text (Get-Content -LiteralPath (Join-Path $RepoRoot "templates/_render/AGENTS.md.tpl") -Raw) -Tokens $Tokens
+    Write-ManagedBlockFile -Body $agentsMd -Dst (Join-Path $ProjectRoot "AGENTS.md") -BlockId "root-agents" -SourceTemplate "templates/_render/AGENTS.md.tpl" -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+  }
+
+  if ($installClaudeTarget) {
+    $claudeMd = Apply-Tokens -Text (Get-Content -LiteralPath (Join-Path $RepoRoot "templates/_render/CLAUDE.md.tpl") -Raw) -Tokens $Tokens
+    Write-ManagedBlockFile -Body $claudeMd -Dst (Join-Path $ProjectRoot "CLAUDE.md") -BlockId "root-claude" -SourceTemplate "templates/_render/CLAUDE.md.tpl" -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+  }
+}
+
+function Sync-AnalysisIntoCodexProject(
+  [string]$TargetDocs,
+  [string]$ProjectCodexDir,
+  [bool]$IsDryRun,
+  [bool]$IsUpdateOnly,
+  [hashtable]$Stats
+) {
+  $projectContext = Join-Path $ProjectCodexDir "project-context"
+  Ensure-Dir -Path $projectContext -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
+  Ensure-Dir -Path (Join-Path $projectContext "modules") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
+
+  foreach ($name in @("project-overview.md","analysis-summary.json")) {
+    $src = Join-Path $TargetDocs $name
+    if (Test-Path -LiteralPath $src) {
+      Copy-File-Safely -Src $src -Dst (Join-Path $projectContext $name) -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+    }
+  }
+
+  $modulesDir = Join-Path $TargetDocs "modules"
+  if (Test-Path -LiteralPath $modulesDir) {
+    Copy-TreeFiles -SrcRoot $modulesDir -DstRoot (Join-Path $projectContext "modules") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+  }
+}
+
 function Parse-EnabledPacks([object]$Config, [string]$CliPacks, [string[]]$SupportedPacks) {
   $packs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
@@ -271,6 +547,44 @@ function Apply-DefaultRequiredPacks([string[]]$Packs, [string]$AdminUiBase) {
     foreach ($p in $ConditionalRequiredPacks) { [void]$set.Add($p) }
   }
   return @($set | Sort-Object)
+}
+
+function Parse-InstallTargets([object]$Config, [string]$CliTargets, [string[]]$SupportedTargets) {
+  $targets = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+  # CLI targets have priority and override config targets.
+  if (-not [string]::IsNullOrWhiteSpace($CliTargets)) {
+    foreach ($t in ($CliTargets -split ",")) {
+      $x = $t.Trim().ToLower()
+      if ($x) { [void]$targets.Add($x) }
+    }
+  } else {
+    if ($Config.PSObject.Properties.Name -contains "installTargets") {
+      $cfgTargets = $Config.installTargets
+      if ($cfgTargets -is [string]) {
+        foreach ($t in ($cfgTargets -split ",")) {
+          $x = $t.Trim().ToLower()
+          if ($x) { [void]$targets.Add($x) }
+        }
+      } elseif ($cfgTargets -is [System.Collections.IEnumerable]) {
+        foreach ($t in $cfgTargets) {
+          $x = ([string]$t).Trim().ToLower()
+          if ($x) { [void]$targets.Add($x) }
+        }
+      }
+    }
+  }
+
+  if ($targets.Count -eq 0) {
+    foreach ($t in $SupportedTargets) { [void]$targets.Add($t) }
+  }
+
+  $unknown = @($targets | Where-Object { $SupportedTargets -notcontains $_ })
+  if ($unknown.Count -gt 0) {
+    throw "Unknown install target(s): $($unknown -join ', '). Supported targets: $($SupportedTargets -join ', ')"
+  }
+
+  return @($targets | Sort-Object)
 }
 
 function Get-FileSha256([string]$Path) {
@@ -724,6 +1038,9 @@ function Analyze-Project(
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
+$noWriteMode = [bool]($DryRun -or $Diff)
+$configCandidatePath = [System.IO.Path]::GetFullPath($ConfigPath)
+Ensure-ConfigFile -Path $configCandidatePath -NoWrite $noWriteMode
 $configPathResolved = Resolve-Path $ConfigPath
 $config = Read-Config -Path $configPathResolved
 
@@ -740,6 +1057,10 @@ $framework = if ($config.framework) { [string]$config.framework } else { "TBD" }
 $database = if ($config.database) { [string]$config.database } else { "TBD" }
 $hosting = if ($config.hosting) { [string]$config.hosting } else { "TBD" }
 $sharedTypesPath = if ($config.sharedTypesPath) { [string]$config.sharedTypesPath } else { "src/shared/types" }
+$installCodexCliFlag = if ($InstallCodexCli) { $true } elseif ($config.PSObject.Properties.Name -contains "installCodexCli") { [bool]$config.installCodexCli } else { $false }
+$effectiveUserCodexHome = if (-not [string]::IsNullOrWhiteSpace($UserCodexHome)) { Resolve-UserCodexHome -RawValue $UserCodexHome } elseif ($config.PSObject.Properties.Name -contains "userCodexHome" -and -not [string]::IsNullOrWhiteSpace([string]$config.userCodexHome)) { Resolve-UserCodexHome -RawValue ([string]$config.userCodexHome) } else { Resolve-UserCodexHome -RawValue "" }
+$projectCodexDir = if ($config.PSObject.Properties.Name -contains "projectCodexDir" -and -not [string]::IsNullOrWhiteSpace([string]$config.projectCodexDir)) { [string]$config.projectCodexDir } else { Join-Path $projectRoot ".codex" }
+$installTargetsEffective = Parse-InstallTargets -Config $config -CliTargets $InstallTargets -SupportedTargets $AvailableInstallTargets
 $enabledPacks = Parse-EnabledPacks -Config $config -CliPacks $EnablePack -SupportedPacks $AvailablePacks
 $effectiveAdminUiBase = Parse-AdminUiBase -Config $config -CliAdminUiBase $AdminUiBase
 $effectiveAdminUiSource = if (-not [string]::IsNullOrWhiteSpace($AdminUiSource)) { $AdminUiSource } elseif ($config.PSObject.Properties.Name -contains "adminUiSourcePath") { [string]$config.adminUiSourcePath } else { "" }
@@ -757,13 +1078,14 @@ $targetAgents = Join-Path $targetCopilot "agents"
 $targetDocs = Join-Path $codexHome "shared-docs"
 $resolvedAdminUiSource = $null
 if (($enabledPacks -contains "admin-ui-foundation") -and $effectiveAdminUiBase -eq "admincore") {
-  $resolvedAdminUiSource = Resolve-AdminUiSource -SourcePathRaw $effectiveAdminUiSource -SourceUrlRaw $effectiveAdminUiSourceUrl -SourceSha256 $effectiveAdminUiSha256 -CacheDirRaw $effectiveAdminUiCacheDir -ProjectRoot $projectRoot -IsDryRun $DryRun
+  $resolvedAdminUiSource = Resolve-AdminUiSource -SourcePathRaw $effectiveAdminUiSource -SourceUrlRaw $effectiveAdminUiSourceUrl -SourceSha256 $effectiveAdminUiSha256 -CacheDirRaw $effectiveAdminUiCacheDir -ProjectRoot $projectRoot -IsDryRun $noWriteMode
 }
 
 $stats = @{ created_dirs = 0; created_files = 0; updated_files = 0; skipped_files = 0 }
 
 Write-Host "Mode:"
 Write-Host "- dry-run: $DryRun"
+Write-Host "- diff: $Diff"
 Write-Host "- update-only: $UpdateOnly"
 Write-Host "- analyze-project: $AnalyzeProject"
 Write-Host "- analyze-only: $AnalyzeOnly"
@@ -774,40 +1096,51 @@ Write-Host "- admin ui source path: $(if (-not [string]::IsNullOrWhiteSpace($eff
 Write-Host "- admin ui source url: $(if (-not [string]::IsNullOrWhiteSpace($effectiveAdminUiSourceUrl)) { $effectiveAdminUiSourceUrl } else { 'none' })"
 Write-Host "- admin ui source resolved: $(if (-not [string]::IsNullOrWhiteSpace($resolvedAdminUiSource)) { $resolvedAdminUiSource } else { 'none' })"
 Write-Host "- target codex home: $codexHome"
+Write-Host "- user codex home: $effectiveUserCodexHome"
+Write-Host "- project codex dir: $projectCodexDir"
+Write-Host "- install codex cli: $installCodexCliFlag"
+Write-Host "- install targets: $($installTargetsEffective -join ', ')"
+
+Install-CodexCliForUser -ShouldInstall $installCodexCliFlag -IsDryRun $noWriteMode
 
 if (-not $AnalyzeOnly) {
-  Ensure-Dir -Path $targetCopilot -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats | Out-Null
-  Ensure-Dir -Path $targetAgents -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats | Out-Null
-  Ensure-Dir -Path $targetDocs -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats | Out-Null
-  Ensure-Dir -Path (Join-Path $targetDocs "dev") -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats | Out-Null
-  Ensure-Dir -Path (Join-Path $targetDocs "rules") -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats | Out-Null
+  if ($installTargetsEffective -contains "copilot") {
+    Ensure-Dir -Path $targetCopilot -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats | Out-Null
+    Ensure-Dir -Path $targetAgents -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats | Out-Null
+    Ensure-Dir -Path $targetDocs -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats | Out-Null
+    Ensure-Dir -Path (Join-Path $targetDocs "dev") -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats | Out-Null
+    Ensure-Dir -Path (Join-Path $targetDocs "rules") -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats | Out-Null
 
-  Copy-Dir-Files -SrcDir (Join-Path $repoRoot "templates/copilot-config/agents") -DstDir $targetAgents -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
-  Copy-Dir-Files -SrcDir (Join-Path $repoRoot "templates/shared-docs/dev") -DstDir (Join-Path $targetDocs "dev") -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
-  Copy-Dir-Files -SrcDir (Join-Path $repoRoot "templates/shared-docs/rules") -DstDir (Join-Path $targetDocs "rules") -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
-  Copy-RootMarkdown-Files -SrcDir (Join-Path $repoRoot "templates/shared-docs") -DstDir $targetDocs -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
+    Copy-Dir-Files -SrcDir (Join-Path $repoRoot "templates/copilot-config/agents") -DstDir $targetAgents -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
+    Copy-Dir-Files -SrcDir (Join-Path $repoRoot "templates/shared-docs/dev") -DstDir (Join-Path $targetDocs "dev") -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
+    Copy-Dir-Files -SrcDir (Join-Path $repoRoot "templates/shared-docs/rules") -DstDir (Join-Path $targetDocs "rules") -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
+    Copy-RootMarkdown-Files -SrcDir (Join-Path $repoRoot "templates/shared-docs") -DstDir $targetDocs -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
 
-  foreach ($pack in $enabledPacks) {
-    $packRoot = Join-Path $repoRoot "templates/packs/$pack"
-    if (-not (Test-Path -LiteralPath $packRoot)) { continue }
-    $packAgents = Join-Path $packRoot "copilot-config/agents"
-    $packShared = Join-Path $packRoot "shared-docs"
+    foreach ($pack in $enabledPacks) {
+      $packRoot = Join-Path $repoRoot "templates/packs/$pack"
+      if (-not (Test-Path -LiteralPath $packRoot)) { continue }
+      $packAgents = Join-Path $packRoot "copilot-config/agents"
+      $packShared = Join-Path $packRoot "shared-docs"
 
-    if (Test-Path -LiteralPath $packAgents) {
-      Copy-Dir-Files -SrcDir $packAgents -DstDir $targetAgents -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
+      if (Test-Path -LiteralPath $packAgents) {
+        Copy-Dir-Files -SrcDir $packAgents -DstDir $targetAgents -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
+      }
+      if (Test-Path -LiteralPath $packShared) {
+        Copy-TreeFiles -SrcRoot $packShared -DstRoot $targetDocs -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
+      }
     }
-    if (Test-Path -LiteralPath $packShared) {
-      Copy-TreeFiles -SrcRoot $packShared -DstRoot $targetDocs -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
-    }
-  }
 
-  if ($enabledPacks -contains "admin-ui-foundation") {
-    Install-AdminCoreAssets -TargetDocs $targetDocs -RepoRoot $repoRoot -AdminBase $effectiveAdminUiBase -AdminSourcePath $resolvedAdminUiSource -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
+    if ($enabledPacks -contains "admin-ui-foundation") {
+      Install-AdminCoreAssets -TargetDocs $targetDocs -RepoRoot $repoRoot -AdminBase $effectiveAdminUiBase -AdminSourcePath $resolvedAdminUiSource -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
+    }
   }
 
   $tokens = @{
     "PROJECT_NAME" = $projectName
     "PROJECT_ROOT" = ($projectRoot -replace "\\", "/")
+    "CODEX_HOME" = ($codexHome -replace "\\", "/")
+    "USER_CODEX_HOME" = ($effectiveUserCodexHome -replace "\\", "/")
+    "PROJECT_CODEX_DIR" = ($projectCodexDir -replace "\\", "/")
     "MAIN_BRANCH" = $mainBranch
     "TASK_PREFIX" = $taskPrefix
     "DATE" = (Get-Date -Format "yyyy-MM-dd")
@@ -821,42 +1154,53 @@ if (-not $AnalyzeOnly) {
     "SHARED_TYPES_PATH" = $sharedTypesPath
   }
 
-  $templatePath = Join-Path $repoRoot "templates/copilot-config/copilot-instructions.md"
-  $templateRaw = Get-Content -LiteralPath $templatePath -Raw
-  $rendered = Apply-Tokens -Text $templateRaw -Tokens $tokens
-  Write-ManagedText -Text $rendered -Dst (Join-Path $targetCopilot "copilot-instructions.md") -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
+  if ($installTargetsEffective -contains "copilot") {
+    $templatePath = Join-Path $repoRoot "templates/copilot-config/copilot-instructions.md"
+    $templateRaw = Get-Content -LiteralPath $templatePath -Raw
+    $rendered = Apply-Tokens -Text $templateRaw -Tokens $tokens
+    Write-ManagedText -Text $rendered -Dst (Join-Path $targetCopilot "copilot-instructions.md") -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
 
-  $constitutionPath = Join-Path $repoRoot "templates/_render/CONSTITUTION.md.tpl"
-  if (Test-Path -LiteralPath $constitutionPath) {
-    $constitutionRaw = Get-Content -LiteralPath $constitutionPath -Raw
-    $constitutionRendered = Apply-Tokens -Text $constitutionRaw -Tokens $tokens
-    Write-ManagedText -Text $constitutionRendered -Dst (Join-Path $targetDocs "rules/CONSTITUTION.md") -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
+    $constitutionPath = Join-Path $repoRoot "templates/_render/CONSTITUTION.md.tpl"
+    if (Test-Path -LiteralPath $constitutionPath) {
+      $constitutionRaw = Get-Content -LiteralPath $constitutionPath -Raw
+      $constitutionRendered = Apply-Tokens -Text $constitutionRaw -Tokens $tokens
+      Write-ManagedText -Text $constitutionRendered -Dst (Join-Path $targetDocs "rules/CONSTITUTION.md") -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
+    }
+
+    $qualityPath = Join-Path $repoRoot "templates/_render/QUALITY-GATES.md.tpl"
+    if (Test-Path -LiteralPath $qualityPath) {
+      $qualityRaw = Get-Content -LiteralPath $qualityPath -Raw
+      $qualityRendered = Apply-Tokens -Text $qualityRaw -Tokens $tokens
+      Write-ManagedText -Text $qualityRendered -Dst (Join-Path $targetDocs "rules/QUALITY-GATES.md") -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
+    }
   }
 
-  $qualityPath = Join-Path $repoRoot "templates/_render/QUALITY-GATES.md.tpl"
-  if (Test-Path -LiteralPath $qualityPath) {
-    $qualityRaw = Get-Content -LiteralPath $qualityPath -Raw
-    $qualityRendered = Apply-Tokens -Text $qualityRaw -Tokens $tokens
-    Write-ManagedText -Text $qualityRendered -Dst (Join-Path $targetDocs "rules/QUALITY-GATES.md") -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
-  }
+  Install-CodexTemplates -RepoRoot $repoRoot -ProjectRoot $projectRoot -UserCodexHomePath $effectiveUserCodexHome -ProjectCodexDir $projectCodexDir -Tokens $tokens -InstallTargets $installTargetsEffective -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
 }
 
-if (-not $NoSecondStepPrompt -and -not $AnalyzeProject -and -not $AnalyzeOnly -and -not $DryRun) {
+if (-not $NoSecondStepPrompt -and -not $AnalyzeProject -and -not $AnalyzeOnly -and -not $noWriteMode) {
   $answer = Read-Host "Run second step now: generate project overview analysis? [y/N]"
   if ($answer -and $answer.Trim().ToLower() -in @("y","yes")) {
     $AnalyzeProject = $true
   }
 }
 
-if ($AnalyzeProject) {
-  Ensure-Dir -Path $targetDocs -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats | Out-Null
-  Analyze-Project -ProjectName $projectName -ProjectRoot $projectRoot -TargetDocs $targetDocs -SplitThreshold ([Math]::Max(1,$ModuleSplitThreshold)) -AnalyzeProfile $AnalyzeProfile -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -Stats $stats
+if ($AnalyzeProject -and ($installTargetsEffective -contains "copilot")) {
+  Ensure-Dir -Path $targetDocs -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats | Out-Null
+  Analyze-Project -ProjectName $projectName -ProjectRoot $projectRoot -TargetDocs $targetDocs -SplitThreshold ([Math]::Max(1,$ModuleSplitThreshold)) -AnalyzeProfile $AnalyzeProfile -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
+  if ($installTargetsEffective -contains "codex") {
+    Sync-AnalysisIntoCodexProject -TargetDocs $targetDocs -ProjectCodexDir $projectCodexDir -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
+  }
 }
+
+Write-ProjectLockfile -ProjectRoot $projectRoot -ConfigPath $configPathResolved -InstallTargets $installTargetsEffective -InstallPacks $enabledPacks -IsDryRun $DryRun -IsUpdateOnly $UpdateOnly -DiffMode $Diff -Stats $stats
 
 Write-Host ""
 Write-Host "Done"
 Write-Host "Project: $projectName"
 Write-Host "Codex Home: $codexHome"
+Write-Host "User Codex Home: $effectiveUserCodexHome"
+Write-Host "Project Codex Dir: $projectCodexDir"
 Write-Host "Agents: $targetAgents"
 Write-Host "Docs: $targetDocs"
 Write-Host "Summary:"
@@ -864,6 +1208,6 @@ Write-Host "- dirs created: $($stats.created_dirs)"
 Write-Host "- files created: $($stats.created_files)"
 Write-Host "- files updated: $($stats.updated_files)"
 Write-Host "- files skipped: $($stats.skipped_files)"
-if ($DryRun) { Write-Host ""; Write-Host "No files were changed (dry-run)." }
+if ($noWriteMode) { Write-Host ""; Write-Host "No files were changed ($(if ($Diff) { 'diff' } else { 'dry-run' }))." }
 
 
