@@ -1,0 +1,8 @@
+{
+  "id": "cloakmcp",
+  "name": "Agent Secret Sanitization",
+  "description": "Optional CloakMCP-oriented guidance for secret scanning, deterministic redaction, local vault boundaries, and LLM-safe agent workflows.",
+  "targets": ["copilot", "claude", "codex"],
+  "externalTools": ["cloak"],
+  "defaultEnabled": false
+}

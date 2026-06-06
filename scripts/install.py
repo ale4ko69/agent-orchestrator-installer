@@ -1446,6 +1446,18 @@ def synthesize_commands_doc(
             ]
         )
 
+    if "cloakmcp" in enabled_packs:
+        lines.extend(
+            [
+                "## Secret Sanitization Commands",
+                "- `secrets scan`: inspect excerpts, logs, configs, or env-like text before LLM exposure",
+                "- `secrets pack`: redact sensitive values with local deterministic placeholders when CloakMCP is available",
+                "- `secrets review`: manually verify sanitizer output before sharing",
+                "- `secrets unpack`: restore locally only with explicit approval and trusted context",
+                "",
+            ]
+        )
+
     write_text_file(
         "\n".join(lines).rstrip() + "\n",
         target_docs / "COMMANDS.md",

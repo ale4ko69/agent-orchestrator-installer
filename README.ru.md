@@ -123,6 +123,7 @@ CLI-флаги целей переопределяют цели из конфи�
 - `session-state` включается всегда.
 - `admin-ui-foundation` включается по умолчанию, если `adminUiBase` не равен `none`.
 - `agent-memory` включается только явно и ставит layered memory/provider инструкции для cross-session continuity.
+- `cloakmcp` включается только явно и ставит secret sanitization инструкции для CloakMCP-style local-first workflows.
 - `codegraph` включается только явно и ставит graph-first инструкции для внешнего инструмента CodeGraph.
 - `jira` включается только явно.
 - `knowledge-foundation` включается только явно и ставит локальную файловую wiki вместе с папкой для raw-материалов.
@@ -140,6 +141,8 @@ py -3 ./scripts/install.py --list-packs
 py -3 ./scripts/install.py --list-packs-json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack agent-memory -Diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack agent-memory --diff
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack cloakmcp -Diff
+py -3 ./scripts/install.py ./project.config.json --enable-pack cloakmcp --diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph,markitdown --check-tools
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack codegraph -Diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph --diff
@@ -180,6 +183,12 @@ Converted Markdown остается raw intake, пока его не прове�
 `agent-memory` добавляет инструкции для cross-session recall, long-task offload, memory distillation и provider boundaries. Он разделяет слои `knowledge-foundation`, `session-state`, `agent-memory` и `codegraph`.
 
 Рекомендованный режим по умолчанию — local layered memory. Внешние providers вроде Supermemory или TencentDB Agent Memory-style систем включаются только явно и должны быть описаны в проекте с privacy, scope, retention и uninstall boundaries.
+
+## Набор CloakMCP
+
+`cloakmcp` добавляет local-first secret sanitization инструкции для AI agent workflows. Он ставит docs для scanning, deterministic redaction, local vault boundaries, audit/runtime ignore rules и explicit unpack/disable boundaries, плюс Codex skill `secret-sanitize`.
+
+Installer не устанавливает CloakMCP, не ставит hooks и не переписывает secrets автоматически.
 
 ## Локальная Wiki Знаний
 

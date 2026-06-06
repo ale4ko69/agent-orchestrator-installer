@@ -123,6 +123,7 @@ Pack policy:
 - `session-state` is always enabled.
 - `admin-ui-foundation` is enabled by default unless `adminUiBase=none`.
 - `agent-memory` is opt-in and installs layered memory/provider guidance for cross-session continuity.
+- `cloakmcp` is opt-in and installs secret sanitization guidance for CloakMCP-style local-first workflows.
 - `codegraph` is opt-in and installs graph-first exploration guidance for the external CodeGraph tool.
 - `jira` is opt-in.
 - `knowledge-foundation` is opt-in and installs a local file-based wiki plus raw knowledge inbox.
@@ -140,6 +141,8 @@ py -3 ./scripts/install.py --list-packs
 py -3 ./scripts/install.py --list-packs-json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack agent-memory -Diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack agent-memory --diff
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack cloakmcp -Diff
+py -3 ./scripts/install.py ./project.config.json --enable-pack cloakmcp --diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph,markitdown --check-tools
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack codegraph -Diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph --diff
@@ -180,6 +183,12 @@ Converted Markdown should remain raw intake until reviewed. This installer does 
 `agent-memory` adds guidance for cross-session recall, long-task offload, memory distillation, and provider boundaries. It keeps `knowledge-foundation`, `session-state`, `agent-memory`, and `codegraph` as separate layers.
 
 The default recommended mode is local layered memory. External providers such as Supermemory or TencentDB Agent Memory-style systems are opt-in only and should be documented per project with privacy, scope, retention, and uninstall boundaries.
+
+## CloakMCP Pack
+
+`cloakmcp` adds local-first secret sanitization guidance for AI agent workflows. It installs docs for scanning, deterministic redaction, local vault boundaries, audit/runtime ignore rules, and explicit unpack/disable boundaries, plus the Codex skill `secret-sanitize`.
+
+This installer does not install CloakMCP, does not install hooks, and does not rewrite secrets automatically.
 
 ## Knowledge Foundation
 
