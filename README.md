@@ -125,6 +125,7 @@ Pack policy:
 - `codegraph` is opt-in and installs graph-first exploration guidance for the external CodeGraph tool.
 - `jira` is opt-in.
 - `knowledge-foundation` is opt-in and installs a local file-based wiki plus raw knowledge inbox.
+- `markitdown` is opt-in and installs document-to-Markdown ingestion guidance for the external MarkItDown tool.
 - `specflow` is opt-in and installs spec-driven workflow docs, artifact conventions, and checklist gates.
 - `video-ops` is opt-in.
 - Pack metadata lives in `templates/packs/<pack>/pack.json`. Use `--list-packs` / `-ListPacks` to inspect the available registry.
@@ -138,6 +139,8 @@ py -3 ./scripts/install.py --list-packs
 py -3 ./scripts/install.py --list-packs-json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack codegraph -Diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph --diff
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack markitdown -Diff
+py -3 ./scripts/install.py ./project.config.json --enable-pack markitdown --diff
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack jira,video-ops
 py -3 ./scripts/install.py ./project.config.json --enable-pack jira,video-ops
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack specflow -Diff
@@ -161,6 +164,12 @@ py -3 ./scripts/install.py ./project.config.json --install-packs knowledge-found
 `codegraph` adds guidance for using the external CodeGraph tool during code exploration and planning. It installs docs for graph-first symbol lookup, callers/callees, route discovery, and impact analysis, plus the Codex skill `codegraph-explore`.
 
 This installer does not install CodeGraph or copy its source code. Follow upstream CodeGraph setup and keep `.codegraph/` as local runtime/index state unless the target project documents a different policy.
+
+## MarkItDown Pack
+
+`markitdown` adds guidance for using the external Microsoft MarkItDown tool as a raw document-ingestion step. It is useful when project context exists in PDF, Word, PowerPoint, Excel, HTML, CSV/JSON/XML, ZIP, EPub, transcript, or similar formats.
+
+Converted Markdown should remain raw intake until reviewed. This installer does not install MarkItDown, does not call cloud-backed Azure conversion services automatically, and does not overwrite curated knowledge files.
 
 ## Knowledge Foundation
 

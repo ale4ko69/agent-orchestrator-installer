@@ -125,6 +125,7 @@ CLI-флаги целей переопределяют цели из конфи�
 - `codegraph` включается только явно и ставит graph-first инструкции для внешнего инструмента CodeGraph.
 - `jira` включается только явно.
 - `knowledge-foundation` включается только явно и ставит локальную файловую wiki вместе с папкой для raw-материалов.
+- `markitdown` включается только явно и ставит инструкции document-to-Markdown ingestion для внешнего инструмента MarkItDown.
 - `specflow` включается только явно и ставит документы spec-driven workflow, правила артефактов и checklist gates.
 - `video-ops` включается только явно.
 - Метаданные наборов лежат в `templates/packs/<pack>/pack.json`. Используйте `--list-packs` / `-ListPacks`, чтобы посмотреть доступный registry.
@@ -138,6 +139,8 @@ py -3 ./scripts/install.py --list-packs
 py -3 ./scripts/install.py --list-packs-json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack codegraph -Diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph --diff
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack markitdown -Diff
+py -3 ./scripts/install.py ./project.config.json --enable-pack markitdown --diff
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack jira,video-ops
 py -3 ./scripts/install.py ./project.config.json --enable-pack jira,video-ops
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack specflow -Diff
@@ -161,6 +164,12 @@ py -3 ./scripts/install.py ./project.config.json --install-packs knowledge-found
 `codegraph` добавляет инструкции для внешнего инструмента CodeGraph во время exploration и planning: symbol lookup, callers/callees, route discovery и impact analysis. Для Codex ставится skill `codegraph-explore`.
 
 Installer не устанавливает CodeGraph и не копирует его source code. Установку нужно делать по upstream-инструкциям CodeGraph, а `.codegraph/` считать локальным runtime/index state, если целевой проект явно не описывает другую политику.
+
+## Набор MarkItDown
+
+`markitdown` добавляет инструкции для внешнего инструмента Microsoft MarkItDown как raw document-ingestion шага. Он полезен, когда контекст проекта лежит в PDF, Word, PowerPoint, Excel, HTML, CSV/JSON/XML, ZIP, EPub, transcript или похожих форматах.
+
+Converted Markdown остается raw intake, пока его не проверили. Installer не устанавливает MarkItDown, не вызывает cloud-backed Azure conversion services автоматически и не перезаписывает curated knowledge files.
 
 ## Локальная Wiki Знаний
 

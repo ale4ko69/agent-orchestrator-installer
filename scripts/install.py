@@ -1388,6 +1388,17 @@ def synthesize_commands_doc(
             ]
         )
 
+    if "markitdown" in enabled_packs:
+        lines.extend(
+            [
+                "## MarkItDown Commands",
+                "- `markitdown ingest <source>`: convert a source document into reviewable Markdown intake",
+                "- `markitdown review <converted.md>`: inspect converted output before curation",
+                "- `markitdown curate <converted.md>`: distill reviewed facts into knowledge/docs without overwriting raw intake",
+                "",
+            ]
+        )
+
     write_text_file(
         "\n".join(lines).rstrip() + "\n",
         target_docs / "COMMANDS.md",

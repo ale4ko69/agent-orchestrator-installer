@@ -1,0 +1,8 @@
+{
+  "id": "markitdown",
+  "name": "Document-To-Markdown Ingestion",
+  "description": "Optional MarkItDown guidance for converting project documents into Markdown for analysis and knowledge workflows.",
+  "targets": ["copilot", "claude", "codex"],
+  "externalTools": ["markitdown"],
+  "defaultEnabled": false
+}
