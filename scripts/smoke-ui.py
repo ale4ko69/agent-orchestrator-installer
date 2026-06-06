@@ -17,7 +17,7 @@ def read_json(url: str) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
-def post_json(url: str, payload: dict) -> dict:
+def post_json(url: str, payload: dict, allow_error: bool = False) -> dict:
     body = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
         url,
@@ -25,8 +25,17 @@ def post_json(url: str, payload: dict) -> dict:
         headers={"content-type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            data["_httpStatus"] = response.status
+            return data
+    except urllib.error.HTTPError as exc:
+        if not allow_error:
+            raise
+        data = json.loads(exc.read().decode("utf-8"))
+        data["_httpStatus"] = exc.code
+        return data
 
 
 def wait_for_health(base_url: str, timeout_seconds: float) -> dict:
@@ -76,6 +85,17 @@ def main(argv: list[str]) -> int:
                 "noSecondStepPrompt": True,
             },
         )
+        rejected_write = post_json(
+            f"{base_url}/api/install/run",
+            {
+                "configPath": args.config,
+                "mode": "install",
+                "packs": [],
+                "installTargets": "codex",
+                "noSecondStepPrompt": True,
+            },
+            allow_error=True,
+        )
 
         pack_count = len(packs.get("packs", []))
         checks = [
@@ -83,6 +103,7 @@ def main(argv: list[str]) -> int:
             ("packs", pack_count > 0),
             ("config", bool(validate.get("ok"))),
             ("check-tools", run.get("exitCode") == 0),
+            ("write-gate", rejected_write.get("_httpStatus") == 400 and not rejected_write.get("ok")),
         ]
         for name, ok in checks:
             print(f"{name}: {'ok' if ok else 'failed'}")

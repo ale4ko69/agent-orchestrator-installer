@@ -442,6 +442,16 @@
       color: var(--text);
     }
 
+    .write-gate {
+      border-color: #eed3aa;
+      background: #fff8ed;
+    }
+
+    .write-gate span {
+      color: #5a3a10;
+      line-height: 1.3;
+    }
+
     .console {
       grid-column: 1 / -1;
       display: grid;
@@ -597,6 +607,11 @@
             </div>
           </div>
 
+          <label class="check-row write-gate">
+            <input id="confirmWrite" type="checkbox">
+            <span>Allow write modes for install, update, and analysis</span>
+          </label>
+
           <div class="actions">
             <button id="primaryAction">Run Diff</button>
             <div class="button-row">
@@ -646,10 +661,12 @@
     const commandMetaEl = document.getElementById('commandMeta');
     const packSearchEl = document.getElementById('packSearch');
     const primaryActionEl = document.getElementById('primaryAction');
+    const confirmWriteEl = document.getElementById('confirmWrite');
     const actionButtons = Array.from(document.querySelectorAll('button'));
 
     let packRegistry = [];
     const selectedPackIds = new Set();
+    const writeModes = new Set(['install', 'update-only', 'analyze-project', 'analyze-only']);
 
     function selectedPacks() {
       return Array.from(selectedPackIds);
@@ -663,6 +680,21 @@
       return document.querySelector('input[name="mode"]:checked')?.value || 'diff';
     }
 
+    function updatePrimaryAction() {
+      const labels = {
+        diff: 'Run Diff',
+        'dry-run': 'Run Dry Run',
+        install: 'Run Install',
+        'update-only': 'Run Update',
+        'analyze-project': 'Run Analysis',
+        'analyze-only': 'Run Analyze Only',
+        'check-tools': 'Check Tools'
+      };
+      const mode = selectedMode();
+      primaryActionEl.textContent = labels[mode] || 'Run';
+      primaryActionEl.disabled = writeModes.has(mode) && !confirmWriteEl.checked;
+    }
+
     function setBusy(isBusy) {
       for (const button of actionButtons) {
         button.disabled = isBusy;
@@ -670,6 +702,8 @@
       if (isBusy) {
         statusEl.className = 'status';
         statusTextEl.textContent = 'Running';
+      } else {
+        updatePrimaryAction();
       }
     }
 
@@ -832,6 +866,12 @@
     }
 
     async function runMode(mode = selectedMode()) {
+      if (writeModes.has(mode) && !confirmWriteEl.checked) {
+        show(`Mode "${mode}" can write files. Enable the write confirmation checkbox first.`, mode);
+        setStatus('error', 'Confirmation required');
+        updatePrimaryAction();
+        return;
+      }
       setBusy(true);
       try {
         const data = await postJson('/api/install/run', {
@@ -839,7 +879,8 @@
           mode,
           installTargets: selectedTargets().join(','),
           packs: selectedPacks(),
-          noSecondStepPrompt: true
+          noSecondStepPrompt: true,
+          confirmWrite: confirmWriteEl.checked
         });
         show(commandText(data), `exit ${data.exitCode}`);
         const okLabels = {
@@ -883,20 +924,11 @@
     });
     primaryActionEl.addEventListener('click', runPrimaryAction);
     packSearchEl.addEventListener('input', renderPacks);
+    confirmWriteEl.addEventListener('change', updatePrimaryAction);
     for (const input of document.querySelectorAll('input[name="mode"]')) {
-      input.addEventListener('change', () => {
-        const labels = {
-          diff: 'Run Diff',
-          'dry-run': 'Run Dry Run',
-          install: 'Run Install',
-          'update-only': 'Run Update',
-          'analyze-project': 'Run Analysis',
-          'analyze-only': 'Run Analyze Only',
-          'check-tools': 'Check Tools'
-        };
-        primaryActionEl.textContent = labels[selectedMode()] || 'Run';
-      });
+      input.addEventListener('change', updatePrimaryAction);
     }
+    updatePrimaryAction();
 
     refreshHealth()
       .then(validateConfig)

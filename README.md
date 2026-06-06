@@ -368,6 +368,7 @@ Current UI actions:
 - Validate the selected JSON config and show the core project summary.
 - Check external tools for selected packs through `--check-tools`.
 - Run installer modes through the same Python CLI: `--diff`, `--dry-run`, real install, `--update-only`, `--analyze-project`, and `--analyze-only`.
+- Require explicit write confirmation for install, update, and analysis modes.
 
 The CLI remains the source of truth. Future desktop wrappers such as WebView2 or Tauri should wrap this same local web UI instead of reimplementing installer logic.
 

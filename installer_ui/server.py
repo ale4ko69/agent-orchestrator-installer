@@ -20,6 +20,7 @@ RUN_MODES = {
     "analyze-only": ["--analyze-project", "--analyze-only"],
     "check-tools": ["--check-tools"],
 }
+WRITE_MODES = {"install", "update-only", "analyze-project", "analyze-only"}
 REQUIRED_CONFIG_FIELDS = ["projectName", "projectRoot", "codexHome", "projectCodexDir"]
 
 
@@ -129,6 +130,8 @@ def build_run_args(data: dict[str, object]) -> list[str]:
     mode = str(data.get("mode") or "diff").strip()
     if mode not in RUN_MODES:
         raise ValueError(f"Unsupported mode: {mode}")
+    if mode in WRITE_MODES and data.get("confirmWrite") is not True:
+        raise ValueError(f"Mode requires explicit write confirmation: {mode}")
 
     config_path = build_config_path(data)
     args = [config_path, *build_pack_args(data), *RUN_MODES[mode]]
