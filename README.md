@@ -124,16 +124,31 @@ Pack policy:
 - `admin-ui-foundation` is enabled by default unless `adminUiBase=none`.
 - `jira` is opt-in.
 - `knowledge-foundation` is opt-in and installs a local file-based wiki plus raw knowledge inbox.
+- `specflow` is opt-in and installs spec-driven workflow docs, artifact conventions, and checklist gates.
 - `video-ops` is opt-in.
+- Pack metadata lives in `templates/packs/<pack>/pack.json`. Use `--list-packs` / `-ListPacks` to inspect the available registry.
 
 Enable optional packs:
 
 ```powershell
+pwsh ./scripts/install.ps1 -ListPacks
+py -3 ./scripts/install.py --list-packs
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack jira,video-ops
 py -3 ./scripts/install.py ./project.config.json --enable-pack jira,video-ops
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack specflow -Diff
+py -3 ./scripts/install.py ./project.config.json --enable-pack specflow --diff
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -InstallPacks knowledge-foundation -KnowledgeRoot .ai/knowledge
 py -3 ./scripts/install.py ./project.config.json --install-packs knowledge-foundation --knowledge-root .ai/knowledge
 ```
+
+## SpecFlow Pack
+
+`specflow` adds a lightweight spec-driven workflow inspired by executable specification kits while staying native to this installer. It installs docs under `.ai/shared-docs/` for:
+
+- `specs/<work-id>/` artifact layout
+- `spec.md`, `plan.md`, `tasks.md`, `research.md`, `data-model.md`, `contracts/`, and `quickstart.md`
+- requirements checklist gates before implementation
+- agent command intents such as `specflow specify`, `specflow plan`, `specflow tasks`, and `specflow implement`
 
 ## Knowledge Foundation
 

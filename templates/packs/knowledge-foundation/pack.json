@@ -1,0 +1,7 @@
+{
+  "id": "knowledge-foundation",
+  "name": "Knowledge Foundation",
+  "description": "Local file-based project knowledge wiki and raw source inbox.",
+  "targets": ["copilot", "claude", "codex"],
+  "defaultEnabled": false
+}

@@ -1,0 +1,7 @@
+{
+  "id": "jira",
+  "name": "Jira Workflow",
+  "description": "Jira-oriented workflow notes, quick commands, and setup guidance.",
+  "targets": ["copilot", "claude", "codex"],
+  "defaultEnabled": false
+}

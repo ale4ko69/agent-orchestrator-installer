@@ -1,0 +1,7 @@
+{
+  "id": "admin-ui-foundation",
+  "name": "Admin UI Foundation",
+  "description": "AdminCore UI baseline rules, assets, and agent guidance for admin panel work.",
+  "targets": ["copilot", "claude", "codex"],
+  "defaultEnabled": true
+}

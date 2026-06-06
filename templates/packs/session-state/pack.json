@@ -1,0 +1,7 @@
+{
+  "id": "session-state",
+  "name": "Session State",
+  "description": "Live session-state protocol and quick commands for long-running orchestrator work.",
+  "targets": ["copilot", "claude", "codex"],
+  "defaultEnabled": true
+}

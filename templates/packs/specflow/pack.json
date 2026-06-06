@@ -1,0 +1,8 @@
+{
+  "id": "specflow",
+  "name": "SpecFlow / Spec Kit Compatibility",
+  "description": "Spec-driven feature lifecycle, artifact layout, checklist gates, and agent workflow guidance.",
+  "targets": ["copilot", "claude", "codex"],
+  "externalTools": [],
+  "defaultEnabled": false
+}

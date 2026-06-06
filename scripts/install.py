@@ -34,7 +34,7 @@ EXCLUDED_DIRS = {
     ".trash",
 }
 
-AVAILABLE_PACKS = {"session-state", "jira", "admin-ui-foundation", "knowledge-foundation", "video-ops"}
+FALLBACK_AVAILABLE_PACKS = {"session-state", "jira", "admin-ui-foundation", "knowledge-foundation", "video-ops"}
 ALWAYS_REQUIRED_PACKS = {"session-state"}
 CONDITIONAL_REQUIRED_PACKS = {"admin-ui-foundation"}
 ADMIN_UI_BASE_OPTIONS = {"admincore", "custom", "none"}
@@ -52,6 +52,52 @@ class Stats:
     updated_files: int = 0
     created_files: int = 0
     skipped_files: int = 0
+
+
+def load_pack_registry(repo_root: Path) -> dict[str, dict[str, object]]:
+    packs_root = repo_root / "templates" / "packs"
+    registry: dict[str, dict[str, object]] = {}
+    if not packs_root.exists():
+        return {pack_id: {"id": pack_id, "name": pack_id, "description": ""} for pack_id in sorted(FALLBACK_AVAILABLE_PACKS)}
+
+    for pack_dir in sorted([p for p in packs_root.iterdir() if p.is_dir()], key=lambda p: p.name.lower()):
+        metadata_path = pack_dir / "pack.json"
+        metadata: dict[str, object] = {}
+        if metadata_path.exists():
+            try:
+                raw = json.loads(metadata_path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    metadata = raw
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid pack metadata JSON: {metadata_path}: {exc}") from exc
+        pack_id = str(metadata.get("id") or pack_dir.name).strip().lower()
+        if not pack_id:
+            continue
+        metadata["id"] = pack_id
+        metadata.setdefault("name", pack_id)
+        metadata.setdefault("description", "")
+        registry[pack_id] = metadata
+
+    for pack_id in FALLBACK_AVAILABLE_PACKS:
+        registry.setdefault(pack_id, {"id": pack_id, "name": pack_id, "description": ""})
+    return registry
+
+
+def format_pack_registry(registry: dict[str, dict[str, object]]) -> str:
+    lines = ["Available packs:"]
+    for pack_id in sorted(registry):
+        metadata = registry[pack_id]
+        name = str(metadata.get("name") or pack_id)
+        description = str(metadata.get("description") or "").strip()
+        default_enabled = bool(metadata.get("defaultEnabled", False))
+        targets = metadata.get("targets", [])
+        target_text = ", ".join([str(t) for t in targets]) if isinstance(targets, list) and targets else "any"
+        suffix = " (default)" if default_enabled else ""
+        detail = f" - {pack_id}: {name}{suffix}; targets: {target_text}"
+        if description:
+            detail += f"\n   {description}"
+        lines.append(detail)
+    return "\n".join(lines)
 
 
 def read_config(path: Path) -> dict:
@@ -793,8 +839,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "    python scripts/install.py ./project.config.json --analyze-project --analyze-profile node\n"
             "\n"
             "  Enable optional pack:\n"
+            "    python scripts/install.py --list-packs\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack session-state\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack session-state,jira\n"
+            "    python scripts/install.py ./project.config.json --enable-pack specflow --diff\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack video-ops\n"
             "    python scripts/install.py ./project.config.json --install-packs knowledge-foundation --knowledge-root .ai/knowledge\n"
             "    python scripts/install.py ./project.config.json --analyze-project --enable-pack admin-ui-foundation --admin-ui-mode canonical --admin-ui-canonical-dir \"D:/path/to/canonical-output\"\n"
@@ -806,6 +854,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument("config_path", nargs="?", default="./project.config.json", help="Path to JSON config file.")
+    parser.add_argument(
+        "--list-packs",
+        action="store_true",
+        help="List available packs from templates/packs/pack.json metadata and exit.",
+    )
     parser.add_argument(
         "--diff",
         "--diff-mode",
@@ -841,7 +894,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--enable-pack",
         default="",
-        help="Comma-separated packs to install (supported: session-state, jira, admin-ui-foundation, knowledge-foundation, video-ops). session-state is always auto-enabled.",
+        help="Comma-separated packs to install. Use --list-packs to inspect supported packs. session-state is always auto-enabled.",
     )
     parser.add_argument(
         "--install-packs",
@@ -923,6 +976,7 @@ def parse_enabled_packs(
     cli_enable_pack: str,
     cli_install_packs: str,
     enable_knowledge: bool,
+    available_packs: set[str],
 ) -> list[str]:
     packs: set[str] = set()
 
@@ -951,10 +1005,10 @@ def parse_enabled_packs(
                 if p:
                     packs.add(p)
 
-    unknown = sorted([p for p in packs if p not in AVAILABLE_PACKS])
+    unknown = sorted([p for p in packs if p not in available_packs])
     if unknown:
         raise ValueError(
-            f"Unknown pack(s): {', '.join(unknown)}. Supported packs: {', '.join(sorted(AVAILABLE_PACKS))}"
+            f"Unknown pack(s): {', '.join(unknown)}. Supported packs: {', '.join(sorted(available_packs))}"
         )
     return sorted(packs)
 
@@ -1262,6 +1316,19 @@ def synthesize_commands_doc(
                 "- `knowledge read`: read the knowledge index and relevant wiki files before history-sensitive work",
                 "- `knowledge update`: add durable facts, decisions, lessons, or task history after meaningful work",
                 "- `knowledge raw`: place unprocessed source material in the raw inbox only when useful later",
+                "",
+            ]
+        )
+
+    if "specflow" in enabled_packs:
+        lines.extend(
+            [
+                "## SpecFlow Commands",
+                "- `specflow specify <work-id>`: create or update the durable feature spec",
+                "- `specflow checklist <work-id>`: validate requirement completeness before planning",
+                "- `specflow plan <work-id>`: record architecture, risks, contracts, and validation path",
+                "- `specflow tasks <work-id>`: split work into ordered atomic tasks",
+                "- `specflow implement <work-id>`: execute tasks and record verification evidence",
                 "",
             ]
         )
@@ -1765,7 +1832,13 @@ def main(argv: list[str]) -> int:
     if not config_path.is_absolute():
         config_path = (Path.cwd() / config_path).resolve()
     repo_root = Path(__file__).resolve().parent.parent
+    pack_registry = load_pack_registry(repo_root)
+    available_packs = set(pack_registry.keys())
     stats = Stats()
+
+    if args.list_packs:
+        print(format_pack_registry(pack_registry))
+        return 0
 
     if args.diff_mode:
         args.dry_run = True
@@ -1778,7 +1851,13 @@ def main(argv: list[str]) -> int:
     config = read_config(config_path)
     admin_ui_base = parse_admin_ui_base(config, args.admin_ui_base)
     admin_ui_mode = parse_admin_ui_mode(config, args.admin_ui_mode)
-    enabled_packs = parse_enabled_packs(config, args.enable_pack, args.install_packs, args.enable_knowledge)
+    enabled_packs = parse_enabled_packs(
+        config,
+        args.enable_pack,
+        args.install_packs,
+        args.enable_knowledge,
+        available_packs,
+    )
     enabled_packs = apply_default_required_packs(enabled_packs, admin_ui_base)
 
     project_name = config.get("projectName", "").strip()

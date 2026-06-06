@@ -41,6 +41,9 @@ Note: session-state is always auto-enabled; admin-ui-foundation is auto-enabled 
 .PARAMETER InstallPacks
 Alias-style comma-separated pack list. Adds to EnablePack/config enabledPacks.
 
+.PARAMETER ListPacks
+List available packs from templates/packs/pack.json metadata and exit.
+
 .PARAMETER EnableKnowledge
 Enable the file-based knowledge foundation pack.
 
@@ -84,6 +87,9 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -An
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -DryRun -AnalyzeProject
 
 .EXAMPLE
+pwsh ./scripts/install.ps1 -ListPacks
+
+.EXAMPLE
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -AnalyzeProject -EnablePack session-state
 
 .EXAMPLE
@@ -111,6 +117,7 @@ param(
   [ValidateSet("auto","node","python","go","java","generic")]
   [string]$AnalyzeProfile = "auto",
   [switch]$NoSecondStepPrompt,
+  [switch]$ListPacks,
   [string]$EnablePack = "",
   [string]$InstallPacks = "",
   [switch]$EnableKnowledge,
@@ -130,10 +137,69 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ExcludedDirs = @('.git','node_modules','dist','build','.venv','venv','target','out','.next','.idea','.vscode','.ai','.codex','.claude','.tmp','.trash')
-$AvailablePacks = @('session-state','jira','admin-ui-foundation','knowledge-foundation','video-ops')
+$FallbackAvailablePacks = @('session-state','jira','admin-ui-foundation','knowledge-foundation','video-ops')
 $AlwaysRequiredPacks = @('session-state')
 $ConditionalRequiredPacks = @('admin-ui-foundation')
 $AvailableInstallTargets = @('copilot','claude','codex')
+
+function Load-PackRegistry([string]$RepoRoot) {
+  $registry = @{}
+  $packsRoot = Join-Path $RepoRoot "templates/packs"
+  if (Test-Path -LiteralPath $packsRoot) {
+    foreach ($packDir in (Get-ChildItem -LiteralPath $packsRoot -Directory | Sort-Object Name)) {
+      $metadataPath = Join-Path $packDir.FullName "pack.json"
+      $metadata = $null
+      if (Test-Path -LiteralPath $metadataPath) {
+        try {
+          $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+        } catch {
+          throw "Invalid pack metadata JSON: $metadataPath. $($_.Exception.Message)"
+        }
+      }
+
+      $packId = if ($null -ne $metadata -and $metadata.PSObject.Properties.Name -contains "id" -and -not [string]::IsNullOrWhiteSpace([string]$metadata.id)) {
+        ([string]$metadata.id).Trim().ToLower()
+      } else {
+        $packDir.Name.Trim().ToLower()
+      }
+      if ([string]::IsNullOrWhiteSpace($packId)) { continue }
+
+      $registry[$packId] = [pscustomobject]@{
+        id = $packId
+        name = if ($null -ne $metadata -and $metadata.PSObject.Properties.Name -contains "name" -and -not [string]::IsNullOrWhiteSpace([string]$metadata.name)) { [string]$metadata.name } else { $packId }
+        description = if ($null -ne $metadata -and $metadata.PSObject.Properties.Name -contains "description") { [string]$metadata.description } else { "" }
+        targets = if ($null -ne $metadata -and $metadata.PSObject.Properties.Name -contains "targets") { @($metadata.targets) } else { @() }
+        defaultEnabled = if ($null -ne $metadata -and $metadata.PSObject.Properties.Name -contains "defaultEnabled") { [bool]$metadata.defaultEnabled } else { $false }
+      }
+    }
+  }
+
+  foreach ($packId in $FallbackAvailablePacks) {
+    if (-not $registry.ContainsKey($packId)) {
+      $registry[$packId] = [pscustomobject]@{
+        id = $packId
+        name = $packId
+        description = ""
+        targets = @()
+        defaultEnabled = $false
+      }
+    }
+  }
+  return $registry
+}
+
+function Write-PackRegistry([hashtable]$Registry) {
+  Write-Host "Available packs:"
+  foreach ($packId in ($Registry.Keys | Sort-Object)) {
+    $pack = $Registry[$packId]
+    $targets = if ($pack.targets.Count -gt 0) { @($pack.targets) -join ", " } else { "any" }
+    $suffix = if ([bool]$pack.defaultEnabled) { " (default)" } else { "" }
+    Write-Host " - $($pack.id): $($pack.name)$suffix; targets: $targets"
+    if (-not [string]::IsNullOrWhiteSpace([string]$pack.description)) {
+      Write-Host "   $($pack.description)"
+    }
+  }
+}
 
 function Read-Config([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path)) { throw "Config not found: $Path" }
@@ -1177,6 +1243,12 @@ function Analyze-Project(
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
+$packRegistry = Load-PackRegistry -RepoRoot $repoRoot
+$AvailablePacks = @($packRegistry.Keys | Sort-Object)
+if ($ListPacks) {
+  Write-PackRegistry -Registry $packRegistry
+  exit 0
+}
 $noWriteMode = [bool]($DryRun -or $Diff)
 $configCandidatePath = [System.IO.Path]::GetFullPath($ConfigPath)
 Ensure-ConfigFile -Path $configCandidatePath -NoWrite $noWriteMode

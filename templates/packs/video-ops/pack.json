@@ -1,0 +1,7 @@
+{
+  "id": "video-ops",
+  "name": "Video Operations",
+  "description": "Video acquisition and editing tools, checks, and agent guidance.",
+  "targets": ["copilot", "claude", "codex"],
+  "defaultEnabled": false
+}

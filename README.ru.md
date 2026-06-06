@@ -124,16 +124,31 @@ CLI-флаги целей переопределяют цели из конфи�
 - `admin-ui-foundation` включается по умолчанию, если `adminUiBase` не равен `none`.
 - `jira` включается только явно.
 - `knowledge-foundation` включается только явно и ставит локальную файловую wiki вместе с папкой для raw-материалов.
+- `specflow` включается только явно и ставит документы spec-driven workflow, правила артефактов и checklist gates.
 - `video-ops` включается только явно.
+- Метаданные наборов лежат в `templates/packs/<pack>/pack.json`. Используйте `--list-packs` / `-ListPacks`, чтобы посмотреть доступный registry.
 
 Включить дополнительные наборы:
 
 ```powershell
+pwsh ./scripts/install.ps1 -ListPacks
+py -3 ./scripts/install.py --list-packs
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack jira,video-ops
 py -3 ./scripts/install.py ./project.config.json --enable-pack jira,video-ops
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack specflow -Diff
+py -3 ./scripts/install.py ./project.config.json --enable-pack specflow --diff
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -InstallPacks knowledge-foundation -KnowledgeRoot .ai/knowledge
 py -3 ./scripts/install.py ./project.config.json --install-packs knowledge-foundation --knowledge-root .ai/knowledge
 ```
+
+## Набор SpecFlow
+
+`specflow` добавляет легкий spec-driven workflow, вдохновленный executable specification kits, но остается родным для этого installer-а. Он ставит документы в `.ai/shared-docs/` для:
+
+- структуры `specs/<work-id>/`;
+- артефактов `spec.md`, `plan.md`, `tasks.md`, `research.md`, `data-model.md`, `contracts/` и `quickstart.md`;
+- checklist gates перед implementation;
+- agent command intents вроде `specflow specify`, `specflow plan`, `specflow tasks` и `specflow implement`.
 
 ## Локальная Wiki Знаний
 
