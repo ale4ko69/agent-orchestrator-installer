@@ -1,0 +1,8 @@
+{
+  "id": "agent-memory",
+  "name": "Agent Memory Providers",
+  "description": "Optional agent memory guidance for layered local memory, external provider boundaries, recall, distillation, and privacy-safe workflows.",
+  "targets": ["copilot", "claude", "codex"],
+  "externalTools": [],
+  "defaultEnabled": false
+}

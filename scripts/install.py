@@ -1434,6 +1434,18 @@ def synthesize_commands_doc(
             ]
         )
 
+    if "agent-memory" in enabled_packs:
+        lines.extend(
+            [
+                "## Agent Memory Commands",
+                "- `memory capture`: save raw task trace or source material for later distillation",
+                "- `memory distill`: convert raw notes into stable facts, decisions, lessons, or preferences",
+                "- `memory recall`: read relevant memory before history-sensitive work",
+                "- `memory update`: add, supersede, or mark memory as stale with evidence references",
+                "",
+            ]
+        )
+
     write_text_file(
         "\n".join(lines).rstrip() + "\n",
         target_docs / "COMMANDS.md",

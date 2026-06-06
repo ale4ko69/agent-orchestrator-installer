@@ -122,6 +122,7 @@ Pack policy:
 
 - `session-state` is always enabled.
 - `admin-ui-foundation` is enabled by default unless `adminUiBase=none`.
+- `agent-memory` is opt-in and installs layered memory/provider guidance for cross-session continuity.
 - `codegraph` is opt-in and installs graph-first exploration guidance for the external CodeGraph tool.
 - `jira` is opt-in.
 - `knowledge-foundation` is opt-in and installs a local file-based wiki plus raw knowledge inbox.
@@ -137,6 +138,8 @@ Enable optional packs:
 pwsh ./scripts/install.ps1 -ListPacks
 py -3 ./scripts/install.py --list-packs
 py -3 ./scripts/install.py --list-packs-json
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack agent-memory -Diff
+py -3 ./scripts/install.py ./project.config.json --enable-pack agent-memory --diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph,markitdown --check-tools
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack codegraph -Diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph --diff
@@ -171,6 +174,12 @@ This installer does not install CodeGraph or copy its source code. Follow upstre
 `markitdown` adds guidance for using the external Microsoft MarkItDown tool as a raw document-ingestion step. It is useful when project context exists in PDF, Word, PowerPoint, Excel, HTML, CSV/JSON/XML, ZIP, EPub, transcript, or similar formats.
 
 Converted Markdown should remain raw intake until reviewed. This installer does not install MarkItDown, does not call cloud-backed Azure conversion services automatically, and does not overwrite curated knowledge files.
+
+## Agent Memory Pack
+
+`agent-memory` adds guidance for cross-session recall, long-task offload, memory distillation, and provider boundaries. It keeps `knowledge-foundation`, `session-state`, `agent-memory`, and `codegraph` as separate layers.
+
+The default recommended mode is local layered memory. External providers such as Supermemory or TencentDB Agent Memory-style systems are opt-in only and should be documented per project with privacy, scope, retention, and uninstall boundaries.
 
 ## Knowledge Foundation
 
