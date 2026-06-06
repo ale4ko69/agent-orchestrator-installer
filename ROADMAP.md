@@ -262,7 +262,7 @@ This roadmap tracks features that are intentionally postponed from the current s
    - Diff preview and install log console
 
 4. Keep packaging incremental
-   - P11.1: local web server plus browser UI
+   - P11.1: local web server plus browser UI - initial scaffold added in `scripts/ui.py` and `installer_ui/`
    - P11.2: reuse the same frontend inside a Tauri desktop shell
    - P11.3: package Windows/macOS/Linux installers only after the local web workflow is stable
    - WebView2 remains a Windows implementation detail through Tauri, not a hard requirement for the whole project

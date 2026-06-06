@@ -344,6 +344,26 @@ CMD wrapper:
 .\scripts\install.cmd .\project.config.json --analyze-project
 ```
 
+## Local Web UI
+
+The Local Web UI is a thin browser shell over the same Python installer commands. Use it when you want a safer operator flow for pack selection, tool readiness checks, and diff preview before a real install.
+
+Start it from the installer repo:
+
+```powershell
+py -3 .\scripts\ui.py --host 127.0.0.1 --port 8765
+```
+
+Then open `http://127.0.0.1:8765`.
+
+Current UI actions:
+
+- Load the pack registry from `--list-packs-json`.
+- Check external tools for selected packs through `--check-tools`.
+- Run strict no-write preview through `--diff`.
+
+The CLI remains the source of truth. Future desktop wrappers such as WebView2 or Tauri should wrap this same local web UI instead of reimplementing installer logic.
+
 ## Help
 
 ```powershell
