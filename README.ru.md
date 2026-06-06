@@ -127,6 +127,7 @@ CLI-флаги целей переопределяют цели из конфи�
 - `specflow` включается только явно и ставит документы spec-driven workflow, правила артефактов и checklist gates.
 - `video-ops` включается только явно.
 - Метаданные наборов лежат в `templates/packs/<pack>/pack.json`. Используйте `--list-packs` / `-ListPacks`, чтобы посмотреть доступный registry.
+- Правила создания наборов описаны в [docs/PACK_REGISTRY.md](./docs/PACK_REGISTRY.md).
 
 Включить дополнительные наборы:
 

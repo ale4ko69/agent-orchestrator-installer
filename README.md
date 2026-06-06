@@ -127,6 +127,7 @@ Pack policy:
 - `specflow` is opt-in and installs spec-driven workflow docs, artifact conventions, and checklist gates.
 - `video-ops` is opt-in.
 - Pack metadata lives in `templates/packs/<pack>/pack.json`. Use `--list-packs` / `-ListPacks` to inspect the available registry.
+- Pack authoring details live in [docs/PACK_REGISTRY.md](./docs/PACK_REGISTRY.md).
 
 Enable optional packs:
 
