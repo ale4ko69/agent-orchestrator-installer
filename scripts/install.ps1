@@ -47,6 +47,9 @@ List available packs from templates/packs/pack.json metadata and exit.
 .PARAMETER ListPacksJson
 Print available packs as JSON from templates/packs/pack.json metadata and exit.
 
+.PARAMETER CheckTools
+Check whether external tools declared by enabled packs are available on PATH and exit.
+
 .PARAMETER EnableKnowledge
 Enable the file-based knowledge foundation pack.
 
@@ -122,6 +125,7 @@ param(
   [switch]$NoSecondStepPrompt,
   [switch]$ListPacks,
   [switch]$ListPacksJson,
+  [switch]$CheckTools,
   [string]$EnablePack = "",
   [string]$InstallPacks = "",
   [switch]$EnableKnowledge,
@@ -174,6 +178,7 @@ function Load-PackRegistry([string]$RepoRoot) {
         description = if ($null -ne $metadata -and $metadata.PSObject.Properties.Name -contains "description") { [string]$metadata.description } else { "" }
         targets = if ($null -ne $metadata -and $metadata.PSObject.Properties.Name -contains "targets") { @($metadata.targets) } else { @() }
         defaultEnabled = if ($null -ne $metadata -and $metadata.PSObject.Properties.Name -contains "defaultEnabled") { [bool]$metadata.defaultEnabled } else { $false }
+        externalTools = if ($null -ne $metadata -and $metadata.PSObject.Properties.Name -contains "externalTools") { @($metadata.externalTools) } else { @() }
       }
     }
   }
@@ -186,6 +191,7 @@ function Load-PackRegistry([string]$RepoRoot) {
         description = ""
         targets = @()
         defaultEnabled = $false
+        externalTools = @()
       }
     }
   }
@@ -215,10 +221,43 @@ function Convert-PackRegistryToJson([hashtable]$Registry) {
       description = [string]$pack.description
       targets = @($pack.targets)
       defaultEnabled = [bool]$pack.defaultEnabled
-      externalTools = @()
+      externalTools = @($pack.externalTools)
     }
   }
   return ([pscustomobject]@{ packs = $packs } | ConvertTo-Json -Depth 5)
+}
+
+function Get-ExternalToolsForPacks([hashtable]$Registry, [string[]]$EnabledPacks) {
+  $tools = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($packId in $EnabledPacks) {
+    if (-not $Registry.ContainsKey($packId)) { continue }
+    foreach ($tool in @($Registry[$packId].externalTools)) {
+      $value = ([string]$tool).Trim()
+      if (-not [string]::IsNullOrWhiteSpace($value)) { [void]$tools.Add($value) }
+    }
+  }
+  return @($tools | Sort-Object)
+}
+
+function Test-ExternalTools([string[]]$Tools) {
+  if ($Tools.Count -eq 0) {
+    Write-Host "No external tools declared for the enabled packs."
+    return 0
+  }
+
+  $missing = @()
+  Write-Host "External tool readiness:"
+  foreach ($tool in $Tools) {
+    $cmd = Get-Command $tool -ErrorAction SilentlyContinue
+    if ($cmd) {
+      Write-Host "- ${tool}: found ($($cmd.Source))"
+    } else {
+      Write-Host "- ${tool}: missing"
+      $missing += $tool
+    }
+  }
+  if ($missing.Count -gt 0) { return 1 }
+  return 0
 }
 
 function Read-Config([string]$Path) {
@@ -1316,6 +1355,11 @@ $effectiveAdminUiSourceUrl = if (-not [string]::IsNullOrWhiteSpace($AdminUiSourc
 $effectiveAdminUiSha256 = if (-not [string]::IsNullOrWhiteSpace($AdminUiSha256)) { $AdminUiSha256 } elseif ($config.PSObject.Properties.Name -contains "adminUiSourceSha256") { [string]$config.adminUiSourceSha256 } else { "" }
 $effectiveAdminUiCacheDir = if (-not [string]::IsNullOrWhiteSpace($AdminUiCacheDir)) { $AdminUiCacheDir } elseif ($config.PSObject.Properties.Name -contains "adminUiCacheDir") { [string]$config.adminUiCacheDir } else { "" }
 $enabledPacks = Apply-DefaultRequiredPacks -Packs $enabledPacks -AdminUiBase $effectiveAdminUiBase
+
+if ($CheckTools) {
+  $exitCode = Test-ExternalTools -Tools (Get-ExternalToolsForPacks -Registry $packRegistry -EnabledPacks $enabledPacks)
+  exit $exitCode
+}
 
 if ([string]::IsNullOrWhiteSpace($projectName) -or [string]::IsNullOrWhiteSpace($projectRoot)) {
   throw "projectName and projectRoot are required"

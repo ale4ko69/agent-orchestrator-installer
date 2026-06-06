@@ -117,6 +117,36 @@ def pack_registry_json(registry: dict[str, dict[str, object]]) -> str:
     return json.dumps({"packs": packs}, ensure_ascii=False, indent=2)
 
 
+def collect_external_tools(registry: dict[str, dict[str, object]], enabled_packs: list[str]) -> list[str]:
+    tools: set[str] = set()
+    for pack in enabled_packs:
+        metadata = registry.get(pack, {})
+        external_tools = metadata.get("externalTools", [])
+        if isinstance(external_tools, list):
+            for tool in external_tools:
+                value = str(tool).strip()
+                if value:
+                    tools.add(value)
+    return sorted(tools)
+
+
+def check_external_tools(tools: list[str]) -> int:
+    if not tools:
+        print("No external tools declared for the enabled packs.")
+        return 0
+
+    missing = []
+    print("External tool readiness:")
+    for tool in tools:
+        path = shutil.which(tool)
+        if path:
+            print(f"- {tool}: found ({path})")
+        else:
+            print(f"- {tool}: missing")
+            missing.append(tool)
+    return 1 if missing else 0
+
+
 def read_config(path: Path) -> dict:
     if not path.exists():
         raise FileNotFoundError(f"Config not found: {path}")
@@ -901,6 +931,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--list-packs-json",
         action="store_true",
         help="Print available packs as JSON from templates/packs/pack.json metadata and exit.",
+    )
+    parser.add_argument(
+        "--check-tools",
+        action="store_true",
+        help="Check whether external tools declared by enabled packs are available on PATH and exit.",
     )
     parser.add_argument(
         "--diff",
@@ -1925,6 +1960,8 @@ def main(argv: list[str]) -> int:
         available_packs,
     )
     enabled_packs = apply_default_required_packs(enabled_packs, admin_ui_base)
+    if args.check_tools:
+        return check_external_tools(collect_external_tools(pack_registry, enabled_packs))
 
     project_name = config.get("projectName", "").strip()
     project_root_raw = config.get("projectRoot", "").strip()

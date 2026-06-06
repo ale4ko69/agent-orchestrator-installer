@@ -24,6 +24,13 @@ pwsh ./scripts/install.ps1 -ListPacksJson
 py -3 ./scripts/install.py --list-packs-json
 ```
 
+Check external tools declared by enabled packs:
+
+```powershell
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack codegraph,markitdown -CheckTools
+py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph,markitdown --check-tools
+```
+
 ## Metadata
 
 Minimal `pack.json`:
@@ -106,6 +113,7 @@ py -3 scripts/install.py --list-packs
 py -3 scripts/install.py --list-packs-json
 pwsh ./scripts/install.ps1 -ListPacks
 pwsh ./scripts/install.ps1 -ListPacksJson
+py -3 scripts/install.py project.config.example.json --enable-pack <pack-id> --check-tools
 py -3 scripts/install.py project.config.example.json --enable-pack <pack-id> --diff
 pwsh ./scripts/install.ps1 -ConfigPath project.config.example.json -EnablePack <pack-id> -Diff
 ```

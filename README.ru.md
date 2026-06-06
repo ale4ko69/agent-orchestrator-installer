@@ -137,6 +137,7 @@ CLI-флаги целей переопределяют цели из конфи�
 pwsh ./scripts/install.ps1 -ListPacks
 py -3 ./scripts/install.py --list-packs
 py -3 ./scripts/install.py --list-packs-json
+py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph,markitdown --check-tools
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack codegraph -Diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph --diff
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack markitdown -Diff
