@@ -11,6 +11,16 @@ from urllib.parse import urlparse
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
+RUN_MODES = {
+    "diff": ["--diff"],
+    "dry-run": ["--dry-run"],
+    "install": [],
+    "update-only": ["--update-only"],
+    "analyze-project": ["--analyze-project"],
+    "analyze-only": ["--analyze-project", "--analyze-only"],
+    "check-tools": ["--check-tools"],
+}
+REQUIRED_CONFIG_FIELDS = ["projectName", "projectRoot", "codexHome", "projectCodexDir"]
 
 
 def run_installer(args: list[str]) -> dict[str, object]:
@@ -58,6 +68,78 @@ def build_pack_args(data: dict[str, object]) -> list[str]:
 def build_config_path(data: dict[str, object]) -> str:
     value = str(data.get("configPath") or "project.config.json").strip()
     return value or "project.config.json"
+
+
+def resolve_config_path(config_path: str) -> Path:
+    path = Path(config_path)
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    return path.resolve()
+
+
+def validate_config(config_path: str) -> dict[str, object]:
+    path = resolve_config_path(config_path)
+    if not path.exists():
+        return {
+            "ok": False,
+            "path": str(path),
+            "error": "Config file does not exist.",
+            "missing": REQUIRED_CONFIG_FIELDS,
+            "warnings": [],
+        }
+    if not path.is_file():
+        return {"ok": False, "path": str(path), "error": "Config path is not a file.", "warnings": []}
+
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {"ok": False, "path": str(path), "error": f"Invalid JSON: {exc}", "warnings": []}
+
+    if not isinstance(config, dict):
+        return {"ok": False, "path": str(path), "error": "Config root must be a JSON object.", "warnings": []}
+
+    missing = [field for field in REQUIRED_CONFIG_FIELDS if not config.get(field)]
+    warnings: list[str] = []
+    install_targets = config.get("installTargets", [])
+    if install_targets and not isinstance(install_targets, list):
+        warnings.append("installTargets should be an array when set in config.")
+
+    enabled_packs = config.get("enabledPacks", [])
+    if enabled_packs and not isinstance(enabled_packs, (list, str)):
+        warnings.append("enabledPacks should be an array or comma-separated string.")
+
+    summary = {
+        "projectName": config.get("projectName", ""),
+        "projectRoot": config.get("projectRoot", ""),
+        "installTargets": install_targets,
+        "enabledPacks": enabled_packs,
+        "adminUiBase": config.get("adminUiBase", ""),
+        "adminUiMode": config.get("adminUiMode", ""),
+    }
+    return {
+        "ok": not missing,
+        "path": str(path),
+        "missing": missing,
+        "warnings": warnings,
+        "summary": summary,
+    }
+
+
+def build_run_args(data: dict[str, object]) -> list[str]:
+    mode = str(data.get("mode") or "diff").strip()
+    if mode not in RUN_MODES:
+        raise ValueError(f"Unsupported mode: {mode}")
+
+    config_path = build_config_path(data)
+    args = [config_path, *build_pack_args(data), *RUN_MODES[mode]]
+
+    targets = str(data.get("installTargets") or "").strip()
+    if targets:
+        args.extend(["--install-targets", targets])
+
+    if data.get("noSecondStepPrompt", True):
+        args.append("--no-second-step-prompt")
+    return args
 
 
 class InstallerUiHandler(BaseHTTPRequestHandler):
@@ -117,6 +199,17 @@ class InstallerUiHandler(BaseHTTPRequestHandler):
                 args.extend(["--install-targets", targets])
             result = run_installer(args)
             self.send_json(result, status=200)
+            return
+        if path == "/api/config/validate":
+            self.send_json(validate_config(config_path), status=200)
+            return
+        if path == "/api/install/run":
+            try:
+                args = build_run_args(data)
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=400)
+                return
+            self.send_json(run_installer(args), status=200)
             return
         self.send_json({"ok": False, "error": f"Unknown endpoint: {path}"}, status=404)
 

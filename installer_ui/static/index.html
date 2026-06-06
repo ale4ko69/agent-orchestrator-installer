@@ -199,7 +199,7 @@
 
     .segmented {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       border: 1px solid var(--line-strong);
       border-radius: 6px;
       overflow: hidden;
@@ -211,6 +211,7 @@
       display: grid;
       place-items: center;
       border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
       color: var(--muted);
       cursor: pointer;
       user-select: none;
@@ -219,7 +220,19 @@
     }
 
     .segment:last-child {
+      border-bottom: 0;
+    }
+
+    .segment:nth-child(even) {
       border-right: 0;
+    }
+
+    .segment:nth-last-child(-n + 2) {
+      border-bottom: 0;
+    }
+
+    .segment:last-child:nth-child(odd) {
+      grid-column: 1 / -1;
     }
 
     .segment input {
@@ -270,7 +283,7 @@
 
     .button-row {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, 1fr);
       gap: 10px;
     }
 
@@ -412,6 +425,23 @@
       color: var(--warning);
     }
 
+    .config-summary {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-soft);
+      color: var(--muted);
+      display: grid;
+      gap: 5px;
+      min-height: 44px;
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .config-summary strong {
+      color: var(--text);
+    }
+
     .console {
       grid-column: 1 / -1;
       display: grid;
@@ -479,6 +509,10 @@
         border-bottom: 1px solid var(--line);
       }
 
+      .segment:nth-last-child(-n + 2) {
+        border-bottom: 1px solid var(--line);
+      }
+
       .segment:last-child {
         border-bottom: 0;
       }
@@ -508,6 +542,7 @@
           <div class="field">
             <label for="configPath">Config Path</label>
             <input id="configPath" type="text" value="project.config.json" spellcheck="false">
+            <div id="configSummary" class="config-summary">Config not checked yet.</div>
           </div>
 
           <div class="field">
@@ -518,12 +553,28 @@
                 Diff
               </label>
               <label class="segment">
-                <input type="radio" name="mode" value="tools">
-                Tools
+                <input type="radio" name="mode" value="dry-run">
+                Dry Run
               </label>
               <label class="segment">
-                <input type="radio" name="mode" value="refresh">
-                Packs
+                <input type="radio" name="mode" value="install">
+                Install
+              </label>
+              <label class="segment">
+                <input type="radio" name="mode" value="update-only">
+                Update
+              </label>
+              <label class="segment">
+                <input type="radio" name="mode" value="analyze-project">
+                Analyze
+              </label>
+              <label class="segment">
+                <input type="radio" name="mode" value="analyze-only">
+                Analyze Only
+              </label>
+              <label class="segment">
+                <input type="radio" name="mode" value="check-tools">
+                Tools
               </label>
             </div>
           </div>
@@ -549,6 +600,7 @@
           <div class="actions">
             <button id="primaryAction">Run Diff</button>
             <div class="button-row">
+              <button id="validateConfig" class="secondary">Validate</button>
               <button id="checkTools" class="secondary">Check Tools</button>
               <button id="refreshPacks" class="secondary">Refresh Packs</button>
             </div>
@@ -589,6 +641,7 @@
     const statusEl = document.getElementById('status');
     const statusTextEl = document.getElementById('statusText');
     const repoRootEl = document.getElementById('repoRoot');
+    const configSummaryEl = document.getElementById('configSummary');
     const packCountEl = document.getElementById('packCount');
     const commandMetaEl = document.getElementById('commandMeta');
     const packSearchEl = document.getElementById('packSearch');
@@ -628,6 +681,21 @@
     function show(value, meta = '') {
       outputEl.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
       commandMetaEl.textContent = meta || 'No command yet';
+    }
+
+    function renderConfigSummary(data) {
+      if (!data.ok) {
+        const missing = Array.isArray(data.missing) && data.missing.length ? ` Missing: ${data.missing.join(', ')}.` : '';
+        configSummaryEl.innerHTML = `<strong>Invalid config.</strong>${escapeHtml(missing || ` ${data.error || ''}`)}`;
+        return;
+      }
+      const summary = data.summary || {};
+      const targets = Array.isArray(summary.installTargets) ? summary.installTargets.join(', ') : String(summary.installTargets || '');
+      configSummaryEl.innerHTML = `
+        <strong>${escapeHtml(summary.projectName || 'Project')}</strong>
+        <span>${escapeHtml(summary.projectRoot || data.path || '')}</span>
+        <span>Targets: ${escapeHtml(targets || 'default')}</span>
+      `;
     }
 
     function updatePackCount() {
@@ -741,34 +809,60 @@
     }
 
     async function checkTools() {
+      await runMode('check-tools');
+    }
+
+    async function runDiff() {
+      await runMode('diff');
+    }
+
+    async function validateConfig() {
       setBusy(true);
       try {
-        const data = await postJson('/api/tools/check', {
-          configPath: configPathEl.value,
-          packs: selectedPacks()
-        });
-        show(commandText(data), `exit ${data.exitCode}`);
-        setStatus(data.ok ? 'ok' : 'error', data.ok ? 'Tools ok' : 'Tools missing');
+        const data = await postJson('/api/config/validate', { configPath: configPathEl.value });
+        renderConfigSummary(data);
+        show(data, 'config validation');
+        setStatus(data.ok ? 'ok' : 'error', data.ok ? 'Config ok' : 'Config issue');
       } catch (error) {
-        show(String(error), 'tool check');
+        show(String(error), 'config validation');
         setStatus('error', 'Failed');
       } finally {
         setBusy(false);
       }
     }
 
-    async function runDiff() {
+    async function runMode(mode = selectedMode()) {
       setBusy(true);
       try {
-        const data = await postJson('/api/install/diff', {
+        const data = await postJson('/api/install/run', {
           configPath: configPathEl.value,
+          mode,
           installTargets: selectedTargets().join(','),
-          packs: selectedPacks()
+          packs: selectedPacks(),
+          noSecondStepPrompt: true
         });
         show(commandText(data), `exit ${data.exitCode}`);
-        setStatus(data.ok ? 'ok' : 'error', data.ok ? 'Diff ready' : 'Diff failed');
+        const okLabels = {
+          diff: 'Diff ready',
+          'dry-run': 'Dry run ready',
+          install: 'Install done',
+          'update-only': 'Update done',
+          'analyze-project': 'Analysis done',
+          'analyze-only': 'Analysis done',
+          'check-tools': 'Tools ok'
+        };
+        const failLabels = {
+          diff: 'Diff failed',
+          'dry-run': 'Dry run failed',
+          install: 'Install failed',
+          'update-only': 'Update failed',
+          'analyze-project': 'Analysis failed',
+          'analyze-only': 'Analysis failed',
+          'check-tools': 'Tools missing'
+        };
+        setStatus(data.ok ? 'ok' : 'error', data.ok ? okLabels[mode] : failLabels[mode]);
       } catch (error) {
-        show(String(error), 'diff preview');
+        show(String(error), mode);
         setStatus('error', 'Failed');
       } finally {
         setBusy(false);
@@ -776,20 +870,12 @@
     }
 
     async function runPrimaryAction() {
-      const mode = selectedMode();
-      if (mode === 'tools') {
-        await checkTools();
-        return;
-      }
-      if (mode === 'refresh') {
-        await refreshPacks();
-        return;
-      }
-      await runDiff();
+      await runMode(selectedMode());
     }
 
     document.getElementById('refreshPacks').addEventListener('click', refreshPacks);
     document.getElementById('checkTools').addEventListener('click', checkTools);
+    document.getElementById('validateConfig').addEventListener('click', validateConfig);
     document.getElementById('clearPacks').addEventListener('click', () => {
       selectedPackIds.clear();
       for (const input of document.querySelectorAll('input[name="pack"]')) input.checked = false;
@@ -799,12 +885,21 @@
     packSearchEl.addEventListener('input', renderPacks);
     for (const input of document.querySelectorAll('input[name="mode"]')) {
       input.addEventListener('change', () => {
-        const labels = { diff: 'Run Diff', tools: 'Check Tools', refresh: 'Refresh Packs' };
+        const labels = {
+          diff: 'Run Diff',
+          'dry-run': 'Run Dry Run',
+          install: 'Run Install',
+          'update-only': 'Run Update',
+          'analyze-project': 'Run Analysis',
+          'analyze-only': 'Run Analyze Only',
+          'check-tools': 'Check Tools'
+        };
         primaryActionEl.textContent = labels[selectedMode()] || 'Run';
       });
     }
 
     refreshHealth()
+      .then(validateConfig)
       .then(refreshPacks)
       .catch((error) => {
         show(String(error), 'startup');

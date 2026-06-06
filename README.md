@@ -359,8 +359,9 @@ Then open `http://127.0.0.1:8765`.
 Current UI actions:
 
 - Load the pack registry from `--list-packs-json`.
+- Validate the selected JSON config and show the core project summary.
 - Check external tools for selected packs through `--check-tools`.
-- Run strict no-write preview through `--diff`.
+- Run installer modes through the same Python CLI: `--diff`, `--dry-run`, real install, `--update-only`, `--analyze-project`, and `--analyze-only`.
 
 The CLI remains the source of truth. Future desktop wrappers such as WebView2 or Tauri should wrap this same local web UI instead of reimplementing installer logic.
 
