@@ -1376,6 +1376,18 @@ def synthesize_commands_doc(
             ]
         )
 
+    if "codegraph" in enabled_packs:
+        lines.extend(
+            [
+                "## CodeGraph Commands",
+                "- `codegraph status`: check whether the local graph index is available and fresh",
+                "- `codegraph explore <symbol-or-area>`: inspect definitions, callers/callees, and connected files",
+                "- `codegraph impact <symbol-or-file>`: map likely change impact before planning",
+                "- `codegraph refresh`: re-index after significant structural changes using upstream CodeGraph commands",
+                "",
+            ]
+        )
+
     write_text_file(
         "\n".join(lines).rstrip() + "\n",
         target_docs / "COMMANDS.md",

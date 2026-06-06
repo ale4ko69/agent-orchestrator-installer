@@ -1,0 +1,8 @@
+{
+  "id": "codegraph",
+  "name": "CodeGraph Intelligence",
+  "description": "Optional CodeGraph integration guidance for symbol lookup, callers/callees, impact analysis, and graph-first exploration.",
+  "targets": ["copilot", "claude", "codex"],
+  "externalTools": ["codegraph"],
+  "defaultEnabled": false
+}

@@ -122,6 +122,7 @@ Pack policy:
 
 - `session-state` is always enabled.
 - `admin-ui-foundation` is enabled by default unless `adminUiBase=none`.
+- `codegraph` is opt-in and installs graph-first exploration guidance for the external CodeGraph tool.
 - `jira` is opt-in.
 - `knowledge-foundation` is opt-in and installs a local file-based wiki plus raw knowledge inbox.
 - `specflow` is opt-in and installs spec-driven workflow docs, artifact conventions, and checklist gates.
@@ -135,6 +136,8 @@ Enable optional packs:
 pwsh ./scripts/install.ps1 -ListPacks
 py -3 ./scripts/install.py --list-packs
 py -3 ./scripts/install.py --list-packs-json
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack codegraph -Diff
+py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph --diff
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack jira,video-ops
 py -3 ./scripts/install.py ./project.config.json --enable-pack jira,video-ops
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack specflow -Diff
@@ -152,6 +155,12 @@ py -3 ./scripts/install.py ./project.config.json --install-packs knowledge-found
 - requirements checklist gates before implementation
 - agent command intents such as `specflow specify`, `specflow plan`, `specflow tasks`, and `specflow implement`
 - Codex target skills: `specflow-specify`, `specflow-plan`, `specflow-tasks`, and `specflow-implement`
+
+## CodeGraph Pack
+
+`codegraph` adds guidance for using the external CodeGraph tool during code exploration and planning. It installs docs for graph-first symbol lookup, callers/callees, route discovery, and impact analysis, plus the Codex skill `codegraph-explore`.
+
+This installer does not install CodeGraph or copy its source code. Follow upstream CodeGraph setup and keep `.codegraph/` as local runtime/index state unless the target project documents a different policy.
 
 ## Knowledge Foundation
 
