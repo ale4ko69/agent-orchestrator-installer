@@ -149,6 +149,7 @@ py -3 ./scripts/install.py ./project.config.json --install-packs knowledge-found
 - артефактов `spec.md`, `plan.md`, `tasks.md`, `research.md`, `data-model.md`, `contracts/` и `quickstart.md`;
 - checklist gates перед implementation;
 - agent command intents вроде `specflow specify`, `specflow plan`, `specflow tasks` и `specflow implement`.
+- Codex target skills: `specflow-specify`, `specflow-plan`, `specflow-tasks` и `specflow-implement`.
 
 ## Локальная Wiki Знаний
 

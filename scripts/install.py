@@ -541,6 +541,7 @@ def install_codex_templates(
     project_codex_dir: Path,
     tokens: dict[str, str],
     install_targets: set[str],
+    enabled_packs: list[str],
     dry_run: bool,
     update_only: bool,
     stats: Stats,
@@ -570,6 +571,16 @@ def install_codex_templates(
             update_only=update_only,
             stats=stats,
         )
+        for pack in enabled_packs:
+            pack_skills = repo_root / "templates" / "packs" / pack / "codex-global" / "skills"
+            if pack_skills.exists():
+                copy_tree_files(
+                    pack_skills,
+                    target_global_skills,
+                    dry_run=dry_run,
+                    update_only=update_only,
+                    stats=stats,
+                )
         copy_tree_files(
             repo_root / "templates" / "codex-project" / "agents",
             target_project_agents,
@@ -1996,6 +2007,7 @@ def main(argv: list[str]) -> int:
             project_codex_dir=project_codex_dir,
             tokens=tokens,
             install_targets=install_targets,
+            enabled_packs=enabled_packs,
             dry_run=args.dry_run,
             update_only=args.update_only,
             stats=stats,

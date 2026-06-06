@@ -509,6 +509,7 @@ function Install-CodexTemplates(
   [string]$ProjectCodexDir,
   [hashtable]$Tokens,
   [string[]]$InstallTargets,
+  [string[]]$EnabledPacks,
   [bool]$IsDryRun,
   [bool]$IsUpdateOnly,
   [hashtable]$Stats
@@ -531,6 +532,12 @@ function Install-CodexTemplates(
     Ensure-Dir -Path $targetProjectAgents -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats | Out-Null
 
     Copy-TreeFiles -SrcRoot (Join-Path $RepoRoot "templates/codex-global/skills") -DstRoot $targetGlobalSkills -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+    foreach ($pack in $EnabledPacks) {
+      $packSkills = Join-Path $RepoRoot "templates/packs/$pack/codex-global/skills"
+      if (Test-Path -LiteralPath $packSkills) {
+        Copy-TreeFiles -SrcRoot $packSkills -DstRoot $targetGlobalSkills -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+      }
+    }
     Copy-TreeFiles -SrcRoot (Join-Path $RepoRoot "templates/codex-project/agents") -DstRoot $targetProjectAgents -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
     Copy-TreeFiles -SrcRoot (Join-Path $RepoRoot "templates/codex-project/project-context/dev") -DstRoot (Join-Path $targetProjectContext "dev") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
     Copy-TreeFiles -SrcRoot (Join-Path $RepoRoot "templates/codex-project/project-context/rules") -DstRoot (Join-Path $targetProjectContext "rules") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
@@ -1394,7 +1401,7 @@ if (-not $AnalyzeOnly) {
 
   Install-KnowledgeFoundation -RepoRoot $repoRoot -ProjectRoot $projectRoot -ProjectCodexDir $projectCodexDir -Knowledge $knowledge -Tokens $tokens -InstallTargets $installTargetsEffective -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
 
-  Install-CodexTemplates -RepoRoot $repoRoot -ProjectRoot $projectRoot -UserCodexHomePath $effectiveUserCodexHome -ProjectCodexDir $projectCodexDir -Tokens $tokens -InstallTargets $installTargetsEffective -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
+  Install-CodexTemplates -RepoRoot $repoRoot -ProjectRoot $projectRoot -UserCodexHomePath $effectiveUserCodexHome -ProjectCodexDir $projectCodexDir -Tokens $tokens -InstallTargets $installTargetsEffective -EnabledPacks $enabledPacks -IsDryRun $noWriteMode -IsUpdateOnly $UpdateOnly -Stats $stats
 }
 
 if (-not $NoSecondStepPrompt -and -not $AnalyzeProject -and -not $AnalyzeOnly -and -not $noWriteMode) {
