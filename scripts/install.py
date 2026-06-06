@@ -602,6 +602,16 @@ def install_codex_templates(
             update_only=update_only,
             stats=stats,
         )
+        for pack in enabled_packs:
+            pack_shared_docs = repo_root / "templates" / "packs" / pack / "shared-docs"
+            if pack_shared_docs.exists():
+                copy_tree_files(
+                    pack_shared_docs,
+                    target_project_context,
+                    dry_run=dry_run,
+                    update_only=update_only,
+                    stats=stats,
+                )
 
     readme_path = repo_root / "templates" / "_render" / "codex-project-README.md.tpl"
     source_map_path = repo_root / "templates" / "_render" / "codex-source-map.md.tpl"

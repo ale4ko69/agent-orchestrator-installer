@@ -541,6 +541,12 @@ function Install-CodexTemplates(
     Copy-TreeFiles -SrcRoot (Join-Path $RepoRoot "templates/codex-project/agents") -DstRoot $targetProjectAgents -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
     Copy-TreeFiles -SrcRoot (Join-Path $RepoRoot "templates/codex-project/project-context/dev") -DstRoot (Join-Path $targetProjectContext "dev") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
     Copy-TreeFiles -SrcRoot (Join-Path $RepoRoot "templates/codex-project/project-context/rules") -DstRoot (Join-Path $targetProjectContext "rules") -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+    foreach ($pack in $EnabledPacks) {
+      $packSharedDocs = Join-Path $RepoRoot "templates/packs/$pack/shared-docs"
+      if (Test-Path -LiteralPath $packSharedDocs) {
+        Copy-TreeFiles -SrcRoot $packSharedDocs -DstRoot $targetProjectContext -IsDryRun $IsDryRun -IsUpdateOnly $IsUpdateOnly -Stats $Stats
+      }
+    }
   }
 
   if ($installCodexTarget) {
