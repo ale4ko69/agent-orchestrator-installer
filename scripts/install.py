@@ -1458,6 +1458,17 @@ def synthesize_commands_doc(
             ]
         )
 
+    if "research-engine" in enabled_packs:
+        lines.extend(
+            [
+                "## Research Engine Commands",
+                "- `research question <topic>`: define the research question and required freshness",
+                "- `research gather <topic>`: collect cited sources through the configured research engine",
+                "- `research distill <topic>`: summarize findings into SpecFlow research or raw knowledge notes",
+                "",
+            ]
+        )
+
     write_text_file(
         "\n".join(lines).rstrip() + "\n",
         target_docs / "COMMANDS.md",

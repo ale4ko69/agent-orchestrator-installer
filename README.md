@@ -128,6 +128,7 @@ Pack policy:
 - `jira` is opt-in.
 - `knowledge-foundation` is opt-in and installs a local file-based wiki plus raw knowledge inbox.
 - `markitdown` is opt-in and installs document-to-Markdown ingestion guidance for the external MarkItDown tool.
+- `research-engine` is opt-in and installs research/answer-engine guidance for source-cited planning workflows.
 - `specflow` is opt-in and installs spec-driven workflow docs, artifact conventions, and checklist gates.
 - `video-ops` is opt-in.
 - Pack metadata lives in `templates/packs/<pack>/pack.json`. Use `--list-packs` / `-ListPacks` to inspect the available registry.
@@ -143,6 +144,8 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack agent-m
 py -3 ./scripts/install.py ./project.config.json --enable-pack agent-memory --diff
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack cloakmcp -Diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack cloakmcp --diff
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack research-engine -Diff
+py -3 ./scripts/install.py ./project.config.json --enable-pack research-engine --diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph,markitdown --check-tools
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack codegraph -Diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph --diff
@@ -189,6 +192,12 @@ The default recommended mode is local layered memory. External providers such as
 `cloakmcp` adds local-first secret sanitization guidance for AI agent workflows. It installs docs for scanning, deterministic redaction, local vault boundaries, audit/runtime ignore rules, and explicit unpack/disable boundaries, plus the Codex skill `secret-sanitize`.
 
 This installer does not install CloakMCP, does not install hooks, and does not rewrite secrets automatically.
+
+## Research Engine Pack
+
+`research-engine` adds guidance for using self-hosted or external answer engines such as Vane before specification, planning, and tool selection work. It keeps source-cited research separate from CodeGraph, durable knowledge, and agent memory.
+
+The installer does not install Vane or any research engine automatically.
 
 ## Knowledge Foundation
 

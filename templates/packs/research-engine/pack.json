@@ -1,0 +1,8 @@
+{
+  "id": "research-engine",
+  "name": "Research / Answer Engine",
+  "description": "Optional guidance for using self-hosted research and answer engines such as Vane before specification and planning work.",
+  "targets": ["copilot", "claude", "codex"],
+  "externalTools": [],
+  "defaultEnabled": false
+}

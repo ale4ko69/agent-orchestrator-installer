@@ -128,6 +128,7 @@ CLI-флаги целей переопределяют цели из конфи�
 - `jira` включается только явно.
 - `knowledge-foundation` включается только явно и ставит локальную файловую wiki вместе с папкой для raw-материалов.
 - `markitdown` включается только явно и ставит инструкции document-to-Markdown ingestion для внешнего инструмента MarkItDown.
+- `research-engine` включается только явно и ставит research/answer-engine инструкции для source-cited planning workflows.
 - `specflow` включается только явно и ставит документы spec-driven workflow, правила артефактов и checklist gates.
 - `video-ops` включается только явно.
 - Метаданные наборов лежат в `templates/packs/<pack>/pack.json`. Используйте `--list-packs` / `-ListPacks`, чтобы посмотреть доступный registry.
@@ -143,6 +144,8 @@ pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack agent-m
 py -3 ./scripts/install.py ./project.config.json --enable-pack agent-memory --diff
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack cloakmcp -Diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack cloakmcp --diff
+pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack research-engine -Diff
+py -3 ./scripts/install.py ./project.config.json --enable-pack research-engine --diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph,markitdown --check-tools
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack codegraph -Diff
 py -3 ./scripts/install.py ./project.config.json --enable-pack codegraph --diff
@@ -189,6 +192,12 @@ Converted Markdown остается raw intake, пока его не прове�
 `cloakmcp` добавляет local-first secret sanitization инструкции для AI agent workflows. Он ставит docs для scanning, deterministic redaction, local vault boundaries, audit/runtime ignore rules и explicit unpack/disable boundaries, плюс Codex skill `secret-sanitize`.
 
 Installer не устанавливает CloakMCP, не ставит hooks и не переписывает secrets автоматически.
+
+## Набор Research Engine
+
+`research-engine` добавляет инструкции для self-hosted или external answer engines вроде Vane перед specification, planning и tool selection work. Он отделяет source-cited research от CodeGraph, durable knowledge и agent memory.
+
+Installer не устанавливает Vane или другой research engine автоматически.
 
 ## Локальная Wiki Знаний
 
