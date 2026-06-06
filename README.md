@@ -356,6 +356,12 @@ py -3 .\scripts\ui.py --host 127.0.0.1 --port 8765
 
 Then open `http://127.0.0.1:8765`.
 
+Smoke-test the UI/API wrapper:
+
+```powershell
+py -3 .\scripts\smoke-ui.py
+```
+
 Current UI actions:
 
 - Load the pack registry from `--list-packs-json`.
