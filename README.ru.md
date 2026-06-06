@@ -133,6 +133,7 @@ CLI-флаги целей переопределяют цели из конфи�
 ```powershell
 pwsh ./scripts/install.ps1 -ListPacks
 py -3 ./scripts/install.py --list-packs
+py -3 ./scripts/install.py --list-packs-json
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack jira,video-ops
 py -3 ./scripts/install.py ./project.config.json --enable-pack jira,video-ops
 pwsh ./scripts/install.ps1 -ConfigPath ./project.config.json -EnablePack specflow -Diff

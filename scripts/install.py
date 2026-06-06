@@ -100,6 +100,23 @@ def format_pack_registry(registry: dict[str, dict[str, object]]) -> str:
     return "\n".join(lines)
 
 
+def pack_registry_json(registry: dict[str, dict[str, object]]) -> str:
+    packs = []
+    for pack_id in sorted(registry):
+        metadata = registry[pack_id]
+        packs.append(
+            {
+                "id": pack_id,
+                "name": str(metadata.get("name") or pack_id),
+                "description": str(metadata.get("description") or ""),
+                "targets": metadata.get("targets") if isinstance(metadata.get("targets"), list) else [],
+                "defaultEnabled": bool(metadata.get("defaultEnabled", False)),
+                "externalTools": metadata.get("externalTools") if isinstance(metadata.get("externalTools"), list) else [],
+            }
+        )
+    return json.dumps({"packs": packs}, ensure_ascii=False, indent=2)
+
+
 def read_config(path: Path) -> dict:
     if not path.exists():
         raise FileNotFoundError(f"Config not found: {path}")
@@ -879,6 +896,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--list-packs",
         action="store_true",
         help="List available packs from templates/packs/pack.json metadata and exit.",
+    )
+    parser.add_argument(
+        "--list-packs-json",
+        action="store_true",
+        help="Print available packs as JSON from templates/packs/pack.json metadata and exit.",
     )
     parser.add_argument(
         "--diff",
@@ -1857,8 +1879,8 @@ def main(argv: list[str]) -> int:
     available_packs = set(pack_registry.keys())
     stats = Stats()
 
-    if args.list_packs:
-        print(format_pack_registry(pack_registry))
+    if args.list_packs or args.list_packs_json:
+        print(pack_registry_json(pack_registry) if args.list_packs_json else format_pack_registry(pack_registry))
         return 0
 
     if args.diff_mode:

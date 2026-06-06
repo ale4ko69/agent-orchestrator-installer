@@ -44,6 +44,9 @@ Alias-style comma-separated pack list. Adds to EnablePack/config enabledPacks.
 .PARAMETER ListPacks
 List available packs from templates/packs/pack.json metadata and exit.
 
+.PARAMETER ListPacksJson
+Print available packs as JSON from templates/packs/pack.json metadata and exit.
+
 .PARAMETER EnableKnowledge
 Enable the file-based knowledge foundation pack.
 
@@ -118,6 +121,7 @@ param(
   [string]$AnalyzeProfile = "auto",
   [switch]$NoSecondStepPrompt,
   [switch]$ListPacks,
+  [switch]$ListPacksJson,
   [string]$EnablePack = "",
   [string]$InstallPacks = "",
   [switch]$EnableKnowledge,
@@ -199,6 +203,22 @@ function Write-PackRegistry([hashtable]$Registry) {
       Write-Host "   $($pack.description)"
     }
   }
+}
+
+function Convert-PackRegistryToJson([hashtable]$Registry) {
+  $packs = @()
+  foreach ($packId in ($Registry.Keys | Sort-Object)) {
+    $pack = $Registry[$packId]
+    $packs += [pscustomobject]@{
+      id = [string]$pack.id
+      name = [string]$pack.name
+      description = [string]$pack.description
+      targets = @($pack.targets)
+      defaultEnabled = [bool]$pack.defaultEnabled
+      externalTools = @()
+    }
+  }
+  return ([pscustomobject]@{ packs = $packs } | ConvertTo-Json -Depth 5)
 }
 
 function Read-Config([string]$Path) {
@@ -1258,8 +1278,12 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
 $packRegistry = Load-PackRegistry -RepoRoot $repoRoot
 $AvailablePacks = @($packRegistry.Keys | Sort-Object)
-if ($ListPacks) {
-  Write-PackRegistry -Registry $packRegistry
+if ($ListPacks -or $ListPacksJson) {
+  if ($ListPacksJson) {
+    Write-Output (Convert-PackRegistryToJson -Registry $packRegistry)
+  } else {
+    Write-PackRegistry -Registry $packRegistry
+  }
   exit 0
 }
 $noWriteMode = [bool]($DryRun -or $Diff)
