@@ -7,149 +7,700 @@
   <style>
     :root {
       color-scheme: light;
-      font-family: Arial, sans-serif;
-      background: #f5f7fb;
-      color: #18202f;
+      --bg: #eef2f6;
+      --panel: #ffffff;
+      --panel-soft: #f8fafc;
+      --line: #d8dee8;
+      --line-strong: #b8c2d1;
+      --text: #172033;
+      --muted: #5f6d80;
+      --primary: #2457a6;
+      --primary-strong: #173e78;
+      --success: #18734f;
+      --warning: #9b5b08;
+      --danger: #a73737;
+      --code-bg: #111827;
+      --code-text: #dbe7ff;
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
     }
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
-      padding: 32px;
+      min-width: 320px;
     }
-    main {
-      max-width: 1080px;
-      margin: 0 auto;
+
+    button,
+    input {
+      font: inherit;
     }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      min-height: 64px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.94);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 24px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
     h1 {
-      font-size: 28px;
-      margin: 0 0 20px;
+      font-size: 18px;
+      line-height: 1.2;
+      margin: 0;
+      font-weight: 760;
+      letter-spacing: 0;
     }
-    section {
-      background: #fff;
-      border: 1px solid #d9dfeb;
+
+    .repo {
+      color: var(--muted);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: min(64vw, 760px);
+    }
+
+    .status {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel-soft);
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 0 12px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--warning);
+    }
+
+    .status.ok .status-dot {
+      background: var(--success);
+    }
+
+    .status.error .status-dot {
+      background: var(--danger);
+    }
+
+    main {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 20px 24px 24px;
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      grid-template-rows: minmax(520px, 1fr) 280px;
+      gap: 16px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 20px;
-      margin-bottom: 16px;
+      min-width: 0;
+      overflow: hidden;
     }
-    label {
-      display: block;
-      font-weight: 700;
-      margin-bottom: 6px;
+
+    .panel-header {
+      min-height: 52px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--panel-soft);
     }
-    input[type="text"] {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 10px 12px;
-      border: 1px solid #c8d0df;
-      border-radius: 6px;
+
+    .panel-title {
+      font-weight: 760;
       font-size: 14px;
+      letter-spacing: 0;
     }
-    .grid {
+
+    .panel-count {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .settings {
+      display: grid;
+      align-content: start;
+    }
+
+    .form {
+      padding: 16px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    label,
+    .label {
+      font-size: 12px;
+      font-weight: 760;
+      color: #2f3c50;
+    }
+
+    input[type="text"],
+    .search {
+      width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      min-height: 38px;
+      padding: 8px 10px;
+      outline: none;
+    }
+
+    input[type="text"]:focus,
+    .search:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(36, 87, 166, 0.12);
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .segment {
+      min-height: 38px;
+      display: grid;
+      place-items: center;
+      border-right: 1px solid var(--line);
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .segment:last-child {
+      border-right: 0;
+    }
+
+    .segment input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .segment:has(input:checked) {
+      background: #eaf1fb;
+      color: var(--primary-strong);
+      box-shadow: inset 0 0 0 1px rgba(36, 87, 166, 0.16);
+    }
+
+    .target-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .check-row {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    .check-row input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary);
+    }
+
+    .check-row span {
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .actions {
       display: grid;
       gap: 10px;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      margin-top: 12px;
+      padding-top: 4px;
     }
-    .pack {
-      border: 1px solid #d9dfeb;
-      border-radius: 6px;
-      padding: 10px;
-      min-height: 72px;
-    }
-    .pack span {
-      display: block;
-      font-size: 12px;
-      color: #566174;
-      margin-top: 4px;
-    }
-    .actions {
-      display: flex;
+
+    .button-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
       gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 16px;
     }
+
     button {
-      border: 1px solid #1f5fbf;
-      background: #1f5fbf;
-      color: #fff;
+      min-height: 40px;
       border-radius: 6px;
-      padding: 10px 14px;
+      border: 1px solid transparent;
+      padding: 0 13px;
       cursor: pointer;
-      font-weight: 700;
+      font-weight: 760;
+      color: #fff;
+      background: var(--primary);
     }
+
+    button:hover {
+      background: var(--primary-strong);
+    }
+
     button.secondary {
       background: #fff;
-      color: #1f5fbf;
+      color: var(--primary-strong);
+      border-color: var(--line-strong);
     }
-    pre {
-      background: #101624;
-      color: #e5ecff;
-      padding: 14px;
-      border-radius: 6px;
+
+    button.secondary:hover {
+      background: #f2f6fb;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.62;
+    }
+
+    .packs-panel {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .toolbar {
+      border-bottom: 1px solid var(--line);
+      padding: 12px 16px;
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) auto;
+      gap: 10px;
+      background: #fff;
+    }
+
+    .pack-grid {
+      padding: 16px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      align-content: start;
+      gap: 10px;
       overflow: auto;
-      min-height: 180px;
+    }
+
+    .pack {
+      min-height: 130px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .pack:hover {
+      border-color: var(--line-strong);
+      box-shadow: 0 8px 20px rgba(30, 47, 74, 0.08);
+    }
+
+    .pack.selected {
+      border-color: var(--primary);
+      box-shadow: inset 0 0 0 1px rgba(36, 87, 166, 0.28);
+    }
+
+    .pack-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .pack-name {
+      font-size: 14px;
+      line-height: 1.25;
+      font-weight: 760;
+    }
+
+    .pack-id {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 3px;
+      overflow-wrap: anywhere;
+    }
+
+    .pack input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary);
+      margin-top: 1px;
+      flex: 0 0 auto;
+    }
+
+    .pack-desc {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .pack-meta {
+      min-height: 22px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      border-radius: 999px;
+      padding: 0 8px;
+      background: #eef5f1;
+      color: var(--success);
+      font-size: 11px;
+      font-weight: 760;
+    }
+
+    .chip.external {
+      background: #fff3df;
+      color: var(--warning);
+    }
+
+    .console {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .console-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    pre {
+      margin: 0;
+      background: var(--code-bg);
+      color: var(--code-text);
+      overflow: auto;
+      padding: 14px 16px;
+      font: 12px/1.5 Consolas, "Cascadia Mono", "Liberation Mono", monospace;
       white-space: pre-wrap;
+    }
+
+    .empty {
+      color: var(--muted);
+      padding: 24px;
+      font-size: 13px;
+    }
+
+    @media (max-width: 980px) {
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      main {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(460px, 1fr) 300px;
+        padding: 14px;
+      }
+
+      .console {
+        grid-column: auto;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .topbar {
+        padding: 12px 14px;
+      }
+
+      .toolbar,
+      .button-row {
+        grid-template-columns: 1fr;
+      }
+
+      .segmented {
+        grid-template-columns: 1fr;
+      }
+
+      .segment {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .segment:last-child {
+        border-bottom: 0;
+      }
     }
   </style>
 </head>
 <body>
-  <main>
-    <h1>Agent Orchestrator Installer</h1>
-
-    <section>
-      <label for="configPath">Config Path</label>
-      <input id="configPath" type="text" value="project.config.json">
-
-      <label for="targets" style="margin-top: 14px;">Install Targets</label>
-      <input id="targets" type="text" value="copilot,codex">
-
-      <div class="actions">
-        <button id="refreshPacks" class="secondary">Refresh Packs</button>
-        <button id="checkTools" class="secondary">Check Tools</button>
-        <button id="runDiff">Diff Preview</button>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Agent Orchestrator Installer</h1>
+        <div id="repoRoot" class="repo">Connecting...</div>
       </div>
-    </section>
+      <div id="status" class="status">
+        <span class="status-dot"></span>
+        <span id="statusText">Idle</span>
+      </div>
+    </header>
 
-    <section>
-      <label>Packs</label>
-      <div id="packs" class="grid"></div>
-    </section>
+    <main>
+      <section class="panel settings" aria-labelledby="settingsTitle">
+        <div class="panel-header">
+          <div id="settingsTitle" class="panel-title">Run Setup</div>
+        </div>
 
-    <section>
-      <label>Output</label>
-      <pre id="output">Ready.</pre>
-    </section>
-  </main>
+        <div class="form">
+          <div class="field">
+            <label for="configPath">Config Path</label>
+            <input id="configPath" type="text" value="project.config.json" spellcheck="false">
+          </div>
+
+          <div class="field">
+            <div class="label">Mode</div>
+            <div class="segmented" role="group" aria-label="Run mode">
+              <label class="segment">
+                <input type="radio" name="mode" value="diff" checked>
+                Diff
+              </label>
+              <label class="segment">
+                <input type="radio" name="mode" value="tools">
+                Tools
+              </label>
+              <label class="segment">
+                <input type="radio" name="mode" value="refresh">
+                Packs
+              </label>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="label">Install Targets</div>
+            <div class="target-list">
+              <label class="check-row">
+                <input type="checkbox" name="target" value="copilot" checked>
+                <span>Copilot</span>
+              </label>
+              <label class="check-row">
+                <input type="checkbox" name="target" value="claude">
+                <span>Claude</span>
+              </label>
+              <label class="check-row">
+                <input type="checkbox" name="target" value="codex" checked>
+                <span>Codex</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button id="primaryAction">Run Diff</button>
+            <div class="button-row">
+              <button id="checkTools" class="secondary">Check Tools</button>
+              <button id="refreshPacks" class="secondary">Refresh Packs</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel packs-panel" aria-labelledby="packsTitle">
+        <div class="panel-header">
+          <div id="packsTitle" class="panel-title">Pack Registry</div>
+          <div id="packCount" class="panel-count">0 selected</div>
+        </div>
+
+        <div class="toolbar">
+          <input id="packSearch" class="search" type="text" placeholder="Filter packs" spellcheck="false">
+          <button id="clearPacks" class="secondary">Clear</button>
+        </div>
+
+        <div id="packs" class="pack-grid">
+          <div class="empty">Loading packs...</div>
+        </div>
+      </section>
+
+      <section class="panel console" aria-labelledby="consoleTitle">
+        <div class="panel-header">
+          <div id="consoleTitle" class="panel-title">Command Output</div>
+          <div id="commandMeta" class="console-meta">No command yet</div>
+        </div>
+        <pre id="output">Ready.</pre>
+      </section>
+    </main>
+  </div>
 
   <script>
     const packsEl = document.getElementById('packs');
     const outputEl = document.getElementById('output');
     const configPathEl = document.getElementById('configPath');
-    const targetsEl = document.getElementById('targets');
+    const statusEl = document.getElementById('status');
+    const statusTextEl = document.getElementById('statusText');
+    const repoRootEl = document.getElementById('repoRoot');
+    const packCountEl = document.getElementById('packCount');
+    const commandMetaEl = document.getElementById('commandMeta');
+    const packSearchEl = document.getElementById('packSearch');
+    const primaryActionEl = document.getElementById('primaryAction');
+    const actionButtons = Array.from(document.querySelectorAll('button'));
+
+    let packRegistry = [];
+    const selectedPackIds = new Set();
 
     function selectedPacks() {
-      return Array.from(document.querySelectorAll('input[name="pack"]:checked')).map((input) => input.value);
+      return Array.from(selectedPackIds);
     }
 
-    function show(value) {
-      outputEl.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    function selectedTargets() {
+      return Array.from(document.querySelectorAll('input[name="target"]:checked')).map((input) => input.value);
     }
 
-    async function refreshPacks() {
-      const response = await fetch('/api/packs');
-      const data = await response.json();
-      packsEl.innerHTML = '';
-      for (const pack of data.packs || []) {
-        const wrapper = document.createElement('label');
-        wrapper.className = 'pack';
-        wrapper.innerHTML = `
-          <input type="checkbox" name="pack" value="${pack.id}">
-          ${pack.name || pack.id}
-          <span>${pack.id}</span>
-          <span>${pack.description || ''}</span>
-        `;
-        packsEl.appendChild(wrapper);
+    function selectedMode() {
+      return document.querySelector('input[name="mode"]:checked')?.value || 'diff';
+    }
+
+    function setBusy(isBusy) {
+      for (const button of actionButtons) {
+        button.disabled = isBusy;
       }
-      show(data);
+      if (isBusy) {
+        statusEl.className = 'status';
+        statusTextEl.textContent = 'Running';
+      }
+    }
+
+    function setStatus(kind, text) {
+      statusEl.className = `status ${kind}`;
+      statusTextEl.textContent = text;
+    }
+
+    function show(value, meta = '') {
+      outputEl.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+      commandMetaEl.textContent = meta || 'No command yet';
+    }
+
+    function updatePackCount() {
+      const count = selectedPacks().length;
+      const total = packRegistry.length;
+      packCountEl.textContent = `${count} selected / ${total} total`;
+      for (const card of packsEl.querySelectorAll('.pack')) {
+        const input = card.querySelector('input');
+        card.classList.toggle('selected', Boolean(input?.checked));
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function renderPacks() {
+      const query = packSearchEl.value.trim().toLowerCase();
+      const selected = new Set(selectedPacks());
+      const packs = packRegistry.filter((pack) => {
+        const haystack = `${pack.id || ''} ${pack.name || ''} ${pack.description || ''}`.toLowerCase();
+        return !query || haystack.includes(query);
+      });
+
+      if (!packs.length) {
+        packsEl.innerHTML = '<div class="empty">No packs found.</div>';
+        updatePackCount();
+        return;
+      }
+
+      packsEl.innerHTML = packs.map((pack) => {
+        const tools = Array.isArray(pack.externalTools) ? pack.externalTools : [];
+        const targets = Array.isArray(pack.targets) ? pack.targets : [];
+        const checked = selected.has(pack.id) ? 'checked' : '';
+        const toolChip = tools.length ? `<span class="chip external">${tools.length} tools</span>` : '';
+        const defaultChip = pack.defaultEnabled ? '<span class="chip">default</span>' : '';
+        const targetChip = targets.length ? `<span class="chip">${targets.length} targets</span>` : '';
+        return `
+          <label class="pack">
+            <div class="pack-top">
+              <div>
+                <div class="pack-name">${escapeHtml(pack.name || pack.id)}</div>
+                <div class="pack-id">${escapeHtml(pack.id)}</div>
+              </div>
+              <input type="checkbox" name="pack" value="${escapeHtml(pack.id)}" ${checked}>
+            </div>
+            <div class="pack-desc">${escapeHtml(pack.description || '')}</div>
+            <div class="pack-meta">${defaultChip}${toolChip}${targetChip}</div>
+          </label>
+        `;
+      }).join('');
+
+      for (const input of packsEl.querySelectorAll('input[name="pack"]')) {
+        input.addEventListener('change', () => {
+          if (input.checked) {
+            selectedPackIds.add(input.value);
+          } else {
+            selectedPackIds.delete(input.value);
+          }
+          updatePackCount();
+        });
+      }
+      updatePackCount();
+    }
+
+    async function getJson(url) {
+      const response = await fetch(url);
+      return response.json();
     }
 
     async function postJson(url, body) {
@@ -161,24 +712,104 @@
       return response.json();
     }
 
-    document.getElementById('refreshPacks').addEventListener('click', refreshPacks);
-    document.getElementById('checkTools').addEventListener('click', async () => {
-      const data = await postJson('/api/tools/check', {
-        configPath: configPathEl.value,
-        packs: selectedPacks()
-      });
-      show((data.stdout || '') + (data.stderr || ''));
-    });
-    document.getElementById('runDiff').addEventListener('click', async () => {
-      const data = await postJson('/api/install/diff', {
-        configPath: configPathEl.value,
-        installTargets: targetsEl.value,
-        packs: selectedPacks()
-      });
-      show((data.stdout || '') + (data.stderr || ''));
-    });
+    function commandText(data) {
+      const command = Array.isArray(data.command) ? data.command.join(' ') : '';
+      const output = `${data.stdout || ''}${data.stderr || ''}`.trimEnd();
+      return `${command ? `$ ${command}\n\n` : ''}${output || '(no output)'}`;
+    }
 
-    refreshPacks().catch((error) => show(String(error)));
+    async function refreshHealth() {
+      const data = await getJson('/api/health');
+      repoRootEl.textContent = data.repoRoot || 'Local installer';
+      setStatus(data.ok ? 'ok' : 'error', data.ok ? 'Ready' : 'Offline');
+    }
+
+    async function refreshPacks() {
+      setBusy(true);
+      try {
+        const data = await getJson('/api/packs');
+        packRegistry = Array.isArray(data.packs) ? data.packs : [];
+        renderPacks();
+        show(`Loaded ${packRegistry.length} packs.`, '--list-packs-json');
+        setStatus('ok', 'Packs loaded');
+      } catch (error) {
+        show(String(error), 'pack registry');
+        setStatus('error', 'Failed');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function checkTools() {
+      setBusy(true);
+      try {
+        const data = await postJson('/api/tools/check', {
+          configPath: configPathEl.value,
+          packs: selectedPacks()
+        });
+        show(commandText(data), `exit ${data.exitCode}`);
+        setStatus(data.ok ? 'ok' : 'error', data.ok ? 'Tools ok' : 'Tools missing');
+      } catch (error) {
+        show(String(error), 'tool check');
+        setStatus('error', 'Failed');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function runDiff() {
+      setBusy(true);
+      try {
+        const data = await postJson('/api/install/diff', {
+          configPath: configPathEl.value,
+          installTargets: selectedTargets().join(','),
+          packs: selectedPacks()
+        });
+        show(commandText(data), `exit ${data.exitCode}`);
+        setStatus(data.ok ? 'ok' : 'error', data.ok ? 'Diff ready' : 'Diff failed');
+      } catch (error) {
+        show(String(error), 'diff preview');
+        setStatus('error', 'Failed');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function runPrimaryAction() {
+      const mode = selectedMode();
+      if (mode === 'tools') {
+        await checkTools();
+        return;
+      }
+      if (mode === 'refresh') {
+        await refreshPacks();
+        return;
+      }
+      await runDiff();
+    }
+
+    document.getElementById('refreshPacks').addEventListener('click', refreshPacks);
+    document.getElementById('checkTools').addEventListener('click', checkTools);
+    document.getElementById('clearPacks').addEventListener('click', () => {
+      selectedPackIds.clear();
+      for (const input of document.querySelectorAll('input[name="pack"]')) input.checked = false;
+      updatePackCount();
+    });
+    primaryActionEl.addEventListener('click', runPrimaryAction);
+    packSearchEl.addEventListener('input', renderPacks);
+    for (const input of document.querySelectorAll('input[name="mode"]')) {
+      input.addEventListener('change', () => {
+        const labels = { diff: 'Run Diff', tools: 'Check Tools', refresh: 'Refresh Packs' };
+        primaryActionEl.textContent = labels[selectedMode()] || 'Run';
+      });
+    }
+
+    refreshHealth()
+      .then(refreshPacks)
+      .catch((error) => {
+        show(String(error), 'startup');
+        setStatus('error', 'Failed');
+      });
   </script>
 </body>
 </html>
