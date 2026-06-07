@@ -19,7 +19,7 @@ jobs:
           python-version: "3.11"
 
       - name: Python syntax check
-        run: python -m py_compile scripts/install.py
+        run: python -m py_compile scripts/install.py scripts/ui.py scripts/smoke-ui.py installer_ui/server.py
 
   smoke:
     strategy:
@@ -59,6 +59,11 @@ jobs:
           test -f /tmp/aoi-smoke/.ai/shared-docs/rules/CONSTITUTION.md
           test -f /tmp/aoi-smoke/.ai/shared-docs/rules/QUALITY-GATES.md
 
+      - name: Smoke local web UI (Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: python scripts/smoke-ui.py
+
       - name: Smoke install (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -82,4 +87,9 @@ jobs:
           if (-not (Test-Path -LiteralPath (Join-Path $root ".ai/shared-docs/project-overview.md"))) { throw "project-overview.md missing" }
           if (-not (Test-Path -LiteralPath (Join-Path $root ".ai/shared-docs/rules/CONSTITUTION.md"))) { throw "CONSTITUTION.md missing" }
           if (-not (Test-Path -LiteralPath (Join-Path $root ".ai/shared-docs/rules/QUALITY-GATES.md"))) { throw "QUALITY-GATES.md missing" }
+
+      - name: Smoke local web UI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: python .\scripts\smoke-ui.py
 
