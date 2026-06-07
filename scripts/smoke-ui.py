@@ -75,6 +75,7 @@ def main(argv: list[str]) -> int:
         health = wait_for_health(base_url, args.timeout)
         packs = read_json(f"{base_url}/api/packs")
         validate = post_json(f"{base_url}/api/config/validate", {"configPath": args.config})
+        loaded_config = post_json(f"{base_url}/api/config/load", {"configPath": args.config})
         run = post_json(
             f"{base_url}/api/install/run",
             {
@@ -98,10 +99,17 @@ def main(argv: list[str]) -> int:
         )
 
         pack_count = len(packs.get("packs", []))
+        loaded_summary = loaded_config.get("summary", {})
         checks = [
             ("health", bool(health.get("ok"))),
             ("packs", pack_count > 0),
             ("config", bool(validate.get("ok"))),
+            (
+                "config-load",
+                bool(loaded_config.get("ok"))
+                and "codex" in loaded_summary.get("installTargets", [])
+                and "jira" in loaded_summary.get("enabledPacks", []),
+            ),
             ("check-tools", run.get("exitCode") == 0),
             ("write-gate", rejected_write.get("_httpStatus") == 400 and not rejected_write.get("ok")),
         ]
@@ -111,6 +119,8 @@ def main(argv: list[str]) -> int:
         print(f"repoRoot: {health.get('repoRoot', '')}")
         print(f"packs.count: {pack_count}")
         print(f"config.path: {validate.get('path', '')}")
+        print(f"config.targets: {','.join(loaded_summary.get('installTargets', []))}")
+        print(f"config.packs: {','.join(loaded_summary.get('enabledPacks', []))}")
         return 0 if all(ok for _, ok in checks) else 1
     finally:
         proc.terminate()

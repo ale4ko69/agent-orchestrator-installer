@@ -254,7 +254,7 @@ This roadmap tracks features that are intentionally postponed from the current s
 
 3. Add a first UI wizard
    - Project root picker / manual path entry
-   - Project config editor for `project.config.json`
+   - Project config editor for `project.config.json` - current UI can load config values into the wizard; save/edit remains pending
    - Install target selector: `copilot`, `claude`, `codex`
    - Pack selector for current and future packs
    - Mode controls: `diff`, `dry-run`, `install`, `update-only`, `analyze-project`

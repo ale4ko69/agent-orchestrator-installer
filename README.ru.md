@@ -379,7 +379,7 @@ py -3 .\scripts\smoke-ui.py
 Текущие действия UI:
 
 - загрузить registry наборов через `--list-packs-json`;
-- проверить выбранный JSON config и показать краткую сводку проекта;
+- загрузить или проверить выбранный JSON config и применить targets/packs из него в wizard;
 - проверить внешние tools для выбранных наборов через `--check-tools`;
 - запускать режимы установщика через тот же Python CLI: `--diff`, `--dry-run`, реальную установку, `--update-only`, `--analyze-project` и `--analyze-only`.
 - требовать явное подтверждение записи для install, update и analysis режимов.

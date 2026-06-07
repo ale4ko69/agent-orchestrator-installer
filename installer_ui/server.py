@@ -78,10 +78,10 @@ def resolve_config_path(config_path: str) -> Path:
     return path.resolve()
 
 
-def validate_config(config_path: str) -> dict[str, object]:
+def read_config(config_path: str) -> tuple[Path, dict[str, object] | None, dict[str, object] | None]:
     path = resolve_config_path(config_path)
     if not path.exists():
-        return {
+        return path, None, {
             "ok": False,
             "path": str(path),
             "error": "Config file does not exist.",
@@ -89,15 +89,26 @@ def validate_config(config_path: str) -> dict[str, object]:
             "warnings": [],
         }
     if not path.is_file():
-        return {"ok": False, "path": str(path), "error": "Config path is not a file.", "warnings": []}
+        return path, None, {"ok": False, "path": str(path), "error": "Config path is not a file.", "warnings": []}
 
     try:
         config = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        return {"ok": False, "path": str(path), "error": f"Invalid JSON: {exc}", "warnings": []}
+        return path, None, {"ok": False, "path": str(path), "error": f"Invalid JSON: {exc}", "warnings": []}
 
     if not isinstance(config, dict):
-        return {"ok": False, "path": str(path), "error": "Config root must be a JSON object.", "warnings": []}
+        return path, None, {"ok": False, "path": str(path), "error": "Config root must be a JSON object.", "warnings": []}
+
+    return path, config, None
+
+
+def config_validation_payload(path: Path, config: dict[str, object]) -> dict[str, object]:
+    def normalize_string_list(value: object) -> list[str]:
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return []
 
     missing = [field for field in REQUIRED_CONFIG_FIELDS if not config.get(field)]
     warnings: list[str] = []
@@ -112,8 +123,8 @@ def validate_config(config_path: str) -> dict[str, object]:
     summary = {
         "projectName": config.get("projectName", ""),
         "projectRoot": config.get("projectRoot", ""),
-        "installTargets": install_targets,
-        "enabledPacks": enabled_packs,
+        "installTargets": normalize_string_list(install_targets),
+        "enabledPacks": normalize_string_list(enabled_packs),
         "adminUiBase": config.get("adminUiBase", ""),
         "adminUiMode": config.get("adminUiMode", ""),
     }
@@ -124,6 +135,24 @@ def validate_config(config_path: str) -> dict[str, object]:
         "warnings": warnings,
         "summary": summary,
     }
+
+
+def validate_config(config_path: str) -> dict[str, object]:
+    path, config, error = read_config(config_path)
+    if error is not None:
+        return error
+    assert config is not None
+    return config_validation_payload(path, config)
+
+
+def load_config(config_path: str) -> dict[str, object]:
+    path, config, error = read_config(config_path)
+    if error is not None:
+        return error
+    assert config is not None
+    payload = config_validation_payload(path, config)
+    payload["config"] = config
+    return payload
 
 
 def build_run_args(data: dict[str, object]) -> list[str]:
@@ -205,6 +234,9 @@ class InstallerUiHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/config/validate":
             self.send_json(validate_config(config_path), status=200)
+            return
+        if path == "/api/config/load":
+            self.send_json(load_config(config_path), status=200)
             return
         if path == "/api/install/run":
             try:

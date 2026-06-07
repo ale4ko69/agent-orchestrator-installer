@@ -283,7 +283,7 @@
 
     .button-row {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 10px;
     }
 
@@ -615,6 +615,7 @@
           <div class="actions">
             <button id="primaryAction">Run Diff</button>
             <div class="button-row">
+              <button id="loadConfig" class="secondary">Load</button>
               <button id="validateConfig" class="secondary">Validate</button>
               <button id="checkTools" class="secondary">Check Tools</button>
               <button id="refreshPacks" class="secondary">Refresh Packs</button>
@@ -676,6 +677,13 @@
       return Array.from(document.querySelectorAll('input[name="target"]:checked')).map((input) => input.value);
     }
 
+    function setSelectedTargets(targets) {
+      const selected = new Set(Array.isArray(targets) ? targets : []);
+      for (const input of document.querySelectorAll('input[name="target"]')) {
+        input.checked = selected.has(input.value);
+      }
+    }
+
     function selectedMode() {
       return document.querySelector('input[name="mode"]:checked')?.value || 'diff';
     }
@@ -730,6 +738,21 @@
         <span>${escapeHtml(summary.projectRoot || data.path || '')}</span>
         <span>Targets: ${escapeHtml(targets || 'default')}</span>
       `;
+    }
+
+    function applyConfigSelection(data) {
+      const summary = data.summary || {};
+      if (Array.isArray(summary.installTargets) && summary.installTargets.length) {
+        setSelectedTargets(summary.installTargets);
+      }
+      if (Array.isArray(summary.enabledPacks)) {
+        selectedPackIds.clear();
+        for (const packId of summary.enabledPacks) {
+          selectedPackIds.add(String(packId));
+        }
+        renderPacks();
+      }
+      updatePrimaryAction();
     }
 
     function updatePackCount() {
@@ -865,6 +888,24 @@
       }
     }
 
+    async function loadConfig() {
+      setBusy(true);
+      try {
+        const data = await postJson('/api/config/load', { configPath: configPathEl.value });
+        renderConfigSummary(data);
+        if (data.ok) {
+          applyConfigSelection(data);
+        }
+        show(data, 'config load');
+        setStatus(data.ok ? 'ok' : 'error', data.ok ? 'Config loaded' : 'Config issue');
+      } catch (error) {
+        show(String(error), 'config load');
+        setStatus('error', 'Failed');
+      } finally {
+        setBusy(false);
+      }
+    }
+
     async function runMode(mode = selectedMode()) {
       if (writeModes.has(mode) && !confirmWriteEl.checked) {
         show(`Mode "${mode}" can write files. Enable the write confirmation checkbox first.`, mode);
@@ -917,6 +958,7 @@
     document.getElementById('refreshPacks').addEventListener('click', refreshPacks);
     document.getElementById('checkTools').addEventListener('click', checkTools);
     document.getElementById('validateConfig').addEventListener('click', validateConfig);
+    document.getElementById('loadConfig').addEventListener('click', loadConfig);
     document.getElementById('clearPacks').addEventListener('click', () => {
       selectedPackIds.clear();
       for (const input of document.querySelectorAll('input[name="pack"]')) input.checked = false;
@@ -931,7 +973,7 @@
     updatePrimaryAction();
 
     refreshHealth()
-      .then(validateConfig)
+      .then(loadConfig)
       .then(refreshPacks)
       .catch((error) => {
         show(String(error), 'startup');
