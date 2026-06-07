@@ -283,7 +283,7 @@
 
     .button-row {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
       gap: 10px;
     }
 
@@ -616,6 +616,7 @@
             <button id="primaryAction">Run Diff</button>
             <div class="button-row">
               <button id="loadConfig" class="secondary">Load</button>
+              <button id="draftConfig" class="secondary">Draft</button>
               <button id="validateConfig" class="secondary">Validate</button>
               <button id="checkTools" class="secondary">Check Tools</button>
               <button id="refreshPacks" class="secondary">Refresh Packs</button>
@@ -906,6 +907,27 @@
       }
     }
 
+    async function draftConfig() {
+      setBusy(true);
+      try {
+        const data = await postJson('/api/config/draft', {
+          configPath: configPathEl.value,
+          installTargets: selectedTargets().join(','),
+          packs: selectedPacks()
+        });
+        if (data.validation) {
+          renderConfigSummary(data.validation);
+        }
+        show(data.draftJson || data, 'config draft');
+        setStatus(data.ok ? 'ok' : 'error', data.ok ? 'Draft ready' : 'Draft issue');
+      } catch (error) {
+        show(String(error), 'config draft');
+        setStatus('error', 'Failed');
+      } finally {
+        setBusy(false);
+      }
+    }
+
     async function runMode(mode = selectedMode()) {
       if (writeModes.has(mode) && !confirmWriteEl.checked) {
         show(`Mode "${mode}" can write files. Enable the write confirmation checkbox first.`, mode);
@@ -959,6 +981,7 @@
     document.getElementById('checkTools').addEventListener('click', checkTools);
     document.getElementById('validateConfig').addEventListener('click', validateConfig);
     document.getElementById('loadConfig').addEventListener('click', loadConfig);
+    document.getElementById('draftConfig').addEventListener('click', draftConfig);
     document.getElementById('clearPacks').addEventListener('click', () => {
       selectedPackIds.clear();
       for (const input of document.querySelectorAll('input[name="pack"]')) input.checked = false;

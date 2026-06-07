@@ -365,7 +365,7 @@ py -3 .\scripts\smoke-ui.py
 Current UI actions:
 
 - Load the pack registry from `--list-packs-json`.
-- Load or validate the selected JSON config and apply configured targets/packs to the wizard.
+- Load, validate, or draft the selected JSON config and apply configured targets/packs to the wizard.
 - Check external tools for selected packs through `--check-tools`.
 - Run installer modes through the same Python CLI: `--diff`, `--dry-run`, real install, `--update-only`, `--analyze-project`, and `--analyze-only`.
 - Require explicit write confirmation for install, update, and analysis modes.

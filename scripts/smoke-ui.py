@@ -76,6 +76,14 @@ def main(argv: list[str]) -> int:
         packs = read_json(f"{base_url}/api/packs")
         validate = post_json(f"{base_url}/api/config/validate", {"configPath": args.config})
         loaded_config = post_json(f"{base_url}/api/config/load", {"configPath": args.config})
+        draft_config = post_json(
+            f"{base_url}/api/config/draft",
+            {
+                "configPath": args.config,
+                "installTargets": "codex",
+                "packs": ["jira", "specflow"],
+            },
+        )
         run = post_json(
             f"{base_url}/api/install/run",
             {
@@ -100,6 +108,7 @@ def main(argv: list[str]) -> int:
 
         pack_count = len(packs.get("packs", []))
         loaded_summary = loaded_config.get("summary", {})
+        draft = draft_config.get("draft", {})
         checks = [
             ("health", bool(health.get("ok"))),
             ("packs", pack_count > 0),
@@ -109,6 +118,12 @@ def main(argv: list[str]) -> int:
                 bool(loaded_config.get("ok"))
                 and "codex" in loaded_summary.get("installTargets", [])
                 and "jira" in loaded_summary.get("enabledPacks", []),
+            ),
+            (
+                "config-draft",
+                bool(draft_config.get("ok"))
+                and draft.get("installTargets") == ["codex"]
+                and draft.get("enabledPacks") == ["jira", "specflow"],
             ),
             ("check-tools", run.get("exitCode") == 0),
             ("write-gate", rejected_write.get("_httpStatus") == 400 and not rejected_write.get("ok")),
@@ -121,6 +136,8 @@ def main(argv: list[str]) -> int:
         print(f"config.path: {validate.get('path', '')}")
         print(f"config.targets: {','.join(loaded_summary.get('installTargets', []))}")
         print(f"config.packs: {','.join(loaded_summary.get('enabledPacks', []))}")
+        print(f"draft.targets: {','.join(draft.get('installTargets', []))}")
+        print(f"draft.packs: {','.join(draft.get('enabledPacks', []))}")
         return 0 if all(ok for _, ok in checks) else 1
     finally:
         proc.terminate()

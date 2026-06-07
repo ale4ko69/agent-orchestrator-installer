@@ -155,6 +155,37 @@ def load_config(config_path: str) -> dict[str, object]:
     return payload
 
 
+def normalize_body_list(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return []
+
+
+def draft_config(config_path: str, data: dict[str, object]) -> dict[str, object]:
+    path, config, error = read_config(config_path)
+    if error is not None:
+        return error
+    assert config is not None
+
+    draft = dict(config)
+    if "installTargets" in data:
+        draft["installTargets"] = normalize_body_list(data.get("installTargets"))
+    if "packs" in data:
+        draft["enabledPacks"] = normalize_body_list(data.get("packs"))
+
+    draft_json = json.dumps(draft, ensure_ascii=False, indent=2) + "\n"
+    validation = config_validation_payload(path, draft)
+    return {
+        "ok": validation["ok"],
+        "path": str(path),
+        "draft": draft,
+        "draftJson": draft_json,
+        "validation": validation,
+    }
+
+
 def build_run_args(data: dict[str, object]) -> list[str]:
     mode = str(data.get("mode") or "diff").strip()
     if mode not in RUN_MODES:
@@ -237,6 +268,9 @@ class InstallerUiHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/config/load":
             self.send_json(load_config(config_path), status=200)
+            return
+        if path == "/api/config/draft":
+            self.send_json(draft_config(config_path, data), status=200)
             return
         if path == "/api/install/run":
             try:
