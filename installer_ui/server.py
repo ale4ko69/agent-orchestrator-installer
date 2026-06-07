@@ -283,6 +283,34 @@ def draft_config(config_path: str, data: dict[str, object]) -> dict[str, object]
     }
 
 
+def save_config(config_path: str, data: dict[str, object]) -> dict[str, object]:
+    if data.get("confirmSave") is not True:
+        return {"ok": False, "error": "Saving config requires explicit confirmation."}
+
+    path, config, error = read_config(config_path)
+    if error is not None:
+        return error
+    assert config is not None
+
+    draft_payload = draft_config(config_path, data)
+    if not draft_payload.get("ok"):
+        return draft_payload
+
+    draft = draft_payload.get("draft")
+    if not isinstance(draft, dict):
+        return {"ok": False, "path": str(path), "error": "Draft config is not a JSON object."}
+
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    backup_path = path.with_name(f"{path.name}.{stamp}.bak")
+    backup_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(draft, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    payload = config_validation_payload(path, draft)
+    payload["backupPath"] = str(backup_path)
+    payload["saved"] = True
+    return payload
+
+
 def build_run_args(data: dict[str, object]) -> list[str]:
     mode = str(data.get("mode") or "diff").strip()
     if mode not in RUN_MODES:
@@ -376,6 +404,10 @@ class InstallerUiHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/config/draft":
             self.send_json(draft_config(config_path, data), status=200)
+            return
+        if path == "/api/config/save":
+            result = save_config(config_path, data)
+            self.send_json(result, status=200 if result.get("ok") else 400)
             return
         if path == "/api/install/run":
             try:

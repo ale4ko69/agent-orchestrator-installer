@@ -617,6 +617,7 @@
             <div class="button-row">
               <button id="loadConfig" class="secondary">Load</button>
               <button id="draftConfig" class="secondary">Draft</button>
+              <button id="saveConfig" class="secondary">Save</button>
               <button id="validateConfig" class="secondary">Validate</button>
               <button id="checkTools" class="secondary">Check Tools</button>
               <button id="refreshPacks" class="secondary">Refresh Packs</button>
@@ -664,6 +665,7 @@
     const packSearchEl = document.getElementById('packSearch');
     const primaryActionEl = document.getElementById('primaryAction');
     const confirmWriteEl = document.getElementById('confirmWrite');
+    const saveConfigEl = document.getElementById('saveConfig');
     const actionButtons = Array.from(document.querySelectorAll('button'));
 
     let packRegistry = [];
@@ -702,6 +704,7 @@
       const mode = selectedMode();
       primaryActionEl.textContent = labels[mode] || 'Run';
       primaryActionEl.disabled = writeModes.has(mode) && !confirmWriteEl.checked;
+      saveConfigEl.disabled = !confirmWriteEl.checked;
     }
 
     function setBusy(isBusy) {
@@ -930,6 +933,35 @@
       }
     }
 
+    async function saveConfig() {
+      if (!confirmWriteEl.checked) {
+        show('Saving config can write files. Enable the write confirmation checkbox first.', 'config save');
+        setStatus('error', 'Confirmation required');
+        updatePrimaryAction();
+        return;
+      }
+
+      setBusy(true);
+      try {
+        const data = await postJson('/api/config/save', {
+          configPath: configPathEl.value,
+          installTargets: selectedTargets().join(','),
+          packs: selectedPacks(),
+          confirmSave: confirmWriteEl.checked
+        });
+        if (data.ok) {
+          renderConfigSummary(data);
+        }
+        show(data, 'config save');
+        setStatus(data.ok ? 'ok' : 'error', data.ok ? 'Config saved' : 'Save failed');
+      } catch (error) {
+        show(String(error), 'config save');
+        setStatus('error', 'Failed');
+      } finally {
+        setBusy(false);
+      }
+    }
+
     async function runMode(mode = selectedMode()) {
       if (writeModes.has(mode) && !confirmWriteEl.checked) {
         show(`Mode "${mode}" can write files. Enable the write confirmation checkbox first.`, mode);
@@ -999,6 +1031,7 @@
     document.getElementById('validateConfig').addEventListener('click', validateConfig);
     document.getElementById('loadConfig').addEventListener('click', loadConfig);
     document.getElementById('draftConfig').addEventListener('click', draftConfig);
+    document.getElementById('saveConfig').addEventListener('click', saveConfig);
     document.getElementById('clearPacks').addEventListener('click', () => {
       selectedPackIds.clear();
       for (const input of document.querySelectorAll('input[name="pack"]')) input.checked = false;

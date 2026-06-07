@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 import time
+import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -127,6 +129,28 @@ def main(argv: list[str]) -> int:
             },
             allow_error=True,
         )
+        rejected_save = post_json(
+            f"{base_url}/api/config/save",
+            {
+                "configPath": args.config,
+                "installTargets": "codex",
+                "packs": ["jira"],
+            },
+            allow_error=True,
+        )
+        with tempfile.TemporaryDirectory(prefix="aoi-ui-save-") as temp_dir:
+            save_config_path = Path(temp_dir) / "project.config.json"
+            shutil.copy2(REPO_ROOT / args.config, save_config_path)
+            saved_config = post_json(
+                f"{base_url}/api/config/save",
+                {
+                    "configPath": str(save_config_path),
+                    "installTargets": "codex",
+                    "packs": ["jira", "specflow"],
+                    "confirmSave": True,
+                },
+            )
+            saved_data = json.loads(save_config_path.read_text(encoding="utf-8"))
 
         pack_count = len(packs.get("packs", []))
         loaded_summary = loaded_config.get("summary", {})
@@ -155,6 +179,14 @@ def main(argv: list[str]) -> int:
                 and "install.py" in str(completed_job.get("output", "")),
             ),
             ("write-gate", rejected_write.get("_httpStatus") == 400 and not rejected_write.get("ok")),
+            ("save-gate", rejected_save.get("_httpStatus") == 400 and not rejected_save.get("ok")),
+            (
+                "config-save",
+                bool(saved_config.get("ok"))
+                and bool(saved_config.get("backupPath"))
+                and saved_data.get("installTargets") == ["codex"]
+                and saved_data.get("enabledPacks") == ["jira", "specflow"],
+            ),
         ]
         for name, ok in checks:
             print(f"{name}: {'ok' if ok else 'failed'}")
@@ -168,6 +200,7 @@ def main(argv: list[str]) -> int:
         print(f"draft.packs: {','.join(draft.get('enabledPacks', []))}")
         print(f"job.id: {started_job.get('id', '')}")
         print(f"job.exit: {completed_job.get('exitCode', '')}")
+        print(f"save.backup: {saved_config.get('backupPath', '')}")
         return 0 if all(ok for _, ok in checks) else 1
     finally:
         proc.terminate()

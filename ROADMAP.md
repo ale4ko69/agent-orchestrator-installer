@@ -271,7 +271,7 @@ This roadmap tracks features that are intentionally postponed from the current s
    - Document CLI-first architecture and UI wrapper boundaries
    - Document how to start the Local Web UI and how to fall back to CLI
    - Add smoke checks for config validation, diff mode, update-only mode, and failed command log rendering - initial API smoke added in `scripts/smoke-ui.py`
-   - Keep UI-generated config changes reviewable and compatible with existing diff/no-write safety rules - current UI can produce a no-write config draft
+   - Keep UI-generated config changes reviewable and compatible with existing diff/no-write safety rules - current UI can draft config changes and save selected fields with a backup gate
 
 ### P12 - Research / Answer Engine References
 
