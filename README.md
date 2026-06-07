@@ -374,6 +374,7 @@ Current UI actions:
 - Load, validate, or draft the selected JSON config and apply configured targets/packs to the wizard.
 - Check external tools for selected packs through `--check-tools`.
 - Run installer modes through the same Python CLI: `--diff`, `--dry-run`, real install, `--update-only`, `--analyze-project`, and `--analyze-only`.
+- Stream command output through local background jobs while long installer runs are active.
 - Require explicit write confirmation for install, update, and analysis modes.
 
 The CLI remains the source of truth. Future desktop wrappers such as WebView2 or Tauri should wrap this same local web UI instead of reimplementing installer logic.

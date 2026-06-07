@@ -249,7 +249,7 @@ This roadmap tracks features that are intentionally postponed from the current s
 2. Add a thin installer API wrapper
    - Provide local-only endpoints for config loading, config validation, tool readiness checks, dry-run/diff, install, update-only, and analyze-project - initial config validation and run endpoint added
    - Run existing installer commands through a process runner instead of duplicating install logic - active in `installer_ui/server.py`
-   - Stream logs to the UI and preserve raw command output for troubleshooting
+   - Stream logs to the UI and preserve raw command output for troubleshooting - initial background job polling added
    - Never execute destructive cleanup or third-party installs without explicit user confirmation - write-capable UI modes now require explicit confirmation
 
 3. Add a first UI wizard

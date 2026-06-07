@@ -388,6 +388,7 @@ py -3 .\scripts\smoke-ui.py
 - загрузить, проверить или собрать draft выбранного JSON config и применить targets/packs из него в wizard;
 - проверить внешние tools для выбранных наборов через `--check-tools`;
 - запускать режимы установщика через тот же Python CLI: `--diff`, `--dry-run`, реальную установку, `--update-only`, `--analyze-project` и `--analyze-only`.
+- показывать вывод команд через локальные background jobs во время долгих запусков installer-а.
 - требовать явное подтверждение записи для install, update и analysis режимов.
 
 CLI остаётся источником истины. Будущие desktop-оболочки вроде WebView2 или Tauri должны открывать этот же локальный Web UI, а не заново реализовывать логику installer-а.

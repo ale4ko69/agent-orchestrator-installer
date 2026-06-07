@@ -52,6 +52,17 @@ def wait_for_health(base_url: str, timeout_seconds: float) -> dict:
     raise RuntimeError(f"UI did not become healthy: {last_error}")
 
 
+def wait_for_job(base_url: str, job_id: str, timeout_seconds: float) -> dict:
+    deadline = time.monotonic() + timeout_seconds
+    payload: dict = {}
+    while time.monotonic() < deadline:
+        payload = read_json(f"{base_url}/api/jobs/{job_id}")
+        if payload.get("status") not in {"running", "starting"}:
+            return payload
+        time.sleep(0.25)
+    raise RuntimeError(f"UI job did not finish: {payload}")
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Smoke-test the local installer web UI.")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host for the temporary UI server.")
@@ -94,6 +105,17 @@ def main(argv: list[str]) -> int:
                 "noSecondStepPrompt": True,
             },
         )
+        started_job = post_json(
+            f"{base_url}/api/install/start",
+            {
+                "configPath": args.config,
+                "mode": "check-tools",
+                "packs": [],
+                "installTargets": "codex",
+                "noSecondStepPrompt": True,
+            },
+        )
+        completed_job = wait_for_job(base_url, str(started_job.get("id")), args.timeout)
         rejected_write = post_json(
             f"{base_url}/api/install/run",
             {
@@ -126,6 +148,12 @@ def main(argv: list[str]) -> int:
                 and draft.get("enabledPacks") == ["jira", "specflow"],
             ),
             ("check-tools", run.get("exitCode") == 0),
+            (
+                "job-stream",
+                bool(started_job.get("id"))
+                and completed_job.get("exitCode") == 0
+                and "install.py" in str(completed_job.get("output", "")),
+            ),
             ("write-gate", rejected_write.get("_httpStatus") == 400 and not rejected_write.get("ok")),
         ]
         for name, ok in checks:
@@ -138,6 +166,8 @@ def main(argv: list[str]) -> int:
         print(f"config.packs: {','.join(loaded_summary.get('enabledPacks', []))}")
         print(f"draft.targets: {','.join(draft.get('installTargets', []))}")
         print(f"draft.packs: {','.join(draft.get('enabledPacks', []))}")
+        print(f"job.id: {started_job.get('id', '')}")
+        print(f"job.exit: {completed_job.get('exitCode', '')}")
         return 0 if all(ok for _, ok in checks) else 1
     finally:
         proc.terminate()

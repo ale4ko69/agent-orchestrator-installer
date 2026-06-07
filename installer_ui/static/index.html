@@ -838,10 +838,12 @@
       return response.json();
     }
 
-    function commandText(data) {
-      const command = Array.isArray(data.command) ? data.command.join(' ') : '';
-      const output = `${data.stdout || ''}${data.stderr || ''}`.trimEnd();
-      return `${command ? `$ ${command}\n\n` : ''}${output || '(no output)'}`;
+    function sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function jobOutput(data) {
+      return String(data.output || '').trimEnd() || '(no output yet)';
     }
 
     async function refreshHealth() {
@@ -937,7 +939,7 @@
       }
       setBusy(true);
       try {
-        const data = await postJson('/api/install/run', {
+        const started = await postJson('/api/install/start', {
           configPath: configPathEl.value,
           mode,
           installTargets: selectedTargets().join(','),
@@ -945,7 +947,21 @@
           noSecondStepPrompt: true,
           confirmWrite: confirmWriteEl.checked
         });
-        show(commandText(data), `exit ${data.exitCode}`);
+        if (!started.id) {
+          show(started, 'start failed');
+          setStatus('error', 'Failed');
+          return;
+        }
+
+        let data = started;
+        show(jobOutput(data), `job ${data.id}`);
+        while (data.status === 'running' || data.status === 'starting') {
+          await sleep(500);
+          data = await getJson(`/api/jobs/${data.id}`);
+          show(jobOutput(data), `job ${data.id}`);
+          outputEl.scrollTop = outputEl.scrollHeight;
+        }
+
         const okLabels = {
           diff: 'Diff ready',
           'dry-run': 'Dry run ready',
@@ -964,6 +980,7 @@
           'analyze-only': 'Analysis failed',
           'check-tools': 'Tools missing'
         };
+        commandMetaEl.textContent = `exit ${data.exitCode}`;
         setStatus(data.ok ? 'ok' : 'error', data.ok ? okLabels[mode] : failLabels[mode]);
       } catch (error) {
         show(String(error), mode);

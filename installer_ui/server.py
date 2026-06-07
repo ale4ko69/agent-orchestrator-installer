@@ -4,6 +4,9 @@ import json
 import mimetypes
 import subprocess
 import sys
+import threading
+import time
+import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -23,6 +26,9 @@ RUN_MODES = {
 }
 WRITE_MODES = {"install", "update-only", "analyze-project", "analyze-only"}
 REQUIRED_CONFIG_FIELDS = ["projectName", "projectRoot", "codexHome", "projectCodexDir"]
+JOBS: dict[str, dict[str, object]] = {}
+JOBS_LOCK = threading.Lock()
+JOB_RETENTION_SECONDS = 60 * 30
 
 
 def run_installer(args: list[str]) -> dict[str, object]:
@@ -41,6 +47,96 @@ def run_installer(args: list[str]) -> dict[str, object]:
         "stdout": result.stdout,
         "stderr": result.stderr,
     }
+
+
+def installer_command(args: list[str]) -> list[str]:
+    return [sys.executable, str(REPO_ROOT / "scripts" / "install.py"), *args]
+
+
+def prune_jobs() -> None:
+    cutoff = time.time() - JOB_RETENTION_SECONDS
+    with JOBS_LOCK:
+        stale_ids = [
+            job_id
+            for job_id, job in JOBS.items()
+            if job.get("finishedAt") and float(job.get("finishedAt", 0)) < cutoff
+        ]
+        for job_id in stale_ids:
+            JOBS.pop(job_id, None)
+
+
+def snapshot_job(job_id: str) -> dict[str, object] | None:
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if job is None:
+            return None
+        return {
+            "id": job_id,
+            "ok": job.get("ok"),
+            "status": job.get("status"),
+            "exitCode": job.get("exitCode"),
+            "command": job.get("command"),
+            "output": "".join(job.get("lines", [])),
+            "startedAt": job.get("startedAt"),
+            "finishedAt": job.get("finishedAt"),
+        }
+
+
+def run_job(job_id: str, args: list[str]) -> None:
+    cmd = installer_command(args)
+    with JOBS_LOCK:
+        JOBS[job_id] = {
+            "status": "running",
+            "ok": None,
+            "exitCode": None,
+            "command": cmd,
+            "lines": [f"$ {' '.join(cmd)}\n\n"],
+            "startedAt": time.time(),
+            "finishedAt": None,
+        }
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+        )
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            with JOBS_LOCK:
+                job = JOBS.get(job_id)
+                if job is not None:
+                    job.setdefault("lines", []).append(line)
+        exit_code = proc.wait()
+        with JOBS_LOCK:
+            job = JOBS.get(job_id)
+            if job is not None:
+                job["status"] = "completed" if exit_code == 0 else "failed"
+                job["ok"] = exit_code == 0
+                job["exitCode"] = exit_code
+                job["finishedAt"] = time.time()
+    except Exception as exc:
+        with JOBS_LOCK:
+            job = JOBS.get(job_id)
+            if job is not None:
+                job.setdefault("lines", []).append(f"\n[installer-ui] {exc}\n")
+                job["status"] = "failed"
+                job["ok"] = False
+                job["exitCode"] = -1
+                job["finishedAt"] = time.time()
+
+
+def start_job(args: list[str]) -> dict[str, object]:
+    prune_jobs()
+    job_id = uuid.uuid4().hex
+    thread = threading.Thread(target=run_job, args=(job_id, args), daemon=True)
+    thread.start()
+    time.sleep(0.01)
+    snapshot = snapshot_job(job_id) or {"id": job_id, "status": "starting", "ok": None}
+    return snapshot
 
 
 def parse_json_body(handler: BaseHTTPRequestHandler) -> dict[str, object]:
@@ -240,6 +336,14 @@ class InstallerUiHandler(BaseHTTPRequestHandler):
             else:
                 self.send_json(result, status=500)
             return
+        if path.startswith("/api/jobs/"):
+            job_id = path.rsplit("/", 1)[-1]
+            snapshot = snapshot_job(job_id)
+            if snapshot is None:
+                self.send_json({"ok": False, "error": f"Unknown job: {job_id}"}, status=404)
+            else:
+                self.send_json(snapshot)
+            return
         self.serve_static(path)
 
     def do_POST(self) -> None:
@@ -280,6 +384,14 @@ class InstallerUiHandler(BaseHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(exc)}, status=400)
                 return
             self.send_json(run_installer(args), status=200)
+            return
+        if path == "/api/install/start":
+            try:
+                args = build_run_args(data)
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=400)
+                return
+            self.send_json(start_job(args), status=202)
             return
         self.send_json({"ok": False, "error": f"Unknown endpoint: {path}"}, status=404)
 
