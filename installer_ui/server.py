@@ -4,6 +4,7 @@ import json
 import mimetypes
 import subprocess
 import sys
+import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -304,6 +305,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the local web UI for agent-orchestrator-installer.")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host. Default: 127.0.0.1")
     parser.add_argument("--port", type=int, default=8765, help="Bind port. Default: 8765")
+    parser.add_argument("--open", action="store_true", help="Open the UI in the default browser after startup.")
     return parser.parse_args(argv)
 
 
@@ -313,6 +315,8 @@ def main(argv: list[str]) -> int:
     url = f"http://{args.host}:{args.port}"
     print(f"Agent Orchestrator Installer UI: {url}")
     print("Press Ctrl+C to stop.")
+    if args.open:
+        webbrowser.open(url)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

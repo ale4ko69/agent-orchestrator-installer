@@ -370,6 +370,12 @@ py -3 .\scripts\ui.py --host 127.0.0.1 --port 8765
 
 Потом открой `http://127.0.0.1:8765`.
 
+Чтобы браузер открылся автоматически:
+
+```powershell
+py -3 .\scripts\ui.py --open
+```
+
 Smoke-test для UI/API wrapper:
 
 ```powershell
